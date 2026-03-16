@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables (SECRETS - NEVER COMMIT)
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Gemini/Agent brain (local artifacts)
+.gemini/
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Misc
+*.tgz
+coverage/

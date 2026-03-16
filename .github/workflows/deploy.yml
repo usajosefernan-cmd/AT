@@ -1,0 +1,63 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  # --- Job 1: Build & Deploy Frontend (Firebase) ---
+  build_frontend:
+    name: Build & Deploy Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/checkout@v4
+        with:
+          node-version: 20
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ALGO }}'
+          channelId: live
+          projectId: algotradingnew-josfer # Verify this matches your firebase project ID
+
+  # --- Job 2: Build Backend (Railway is usually auto-triggered by GitHub) ---
+  # We just validate that the backend builds correctly to prevent breaking production
+  build_backend:
+    name: Validate Backend Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/checkout@v4
+        with:
+          node-version: 20
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: Build Backend
+        working-directory: ./backend
+        run: npm run build

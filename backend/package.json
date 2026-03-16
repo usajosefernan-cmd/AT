@@ -1,0 +1,30 @@
+{
+  "name": "algotrading-backend",
+  "version": "3.0.0",
+  "description": "AlgoTrading 24/7 Multi-Agent Trading Backend — Real Market Data, Paper Execution, Supabase + Telegram",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "ccxt": "^4.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "groq-sdk": "^1.1.1",
+    "openai": "^4.73.0",
+    "socket.io": "^4.8.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
