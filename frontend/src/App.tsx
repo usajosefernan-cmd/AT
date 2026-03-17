@@ -4,6 +4,7 @@ import { initSocket, useStore, DESKS } from "./store/useStore";
 import { Login } from "./components/Login";
 import DeskView from "./components/DeskView";
 import AgentFarm from "./components/AgentFarm";
+import AgentRooms from "./components/AgentRooms";
 import AdminConsole from "./components/AdminConsole";
 import {
     LayoutDashboard,
@@ -257,6 +258,7 @@ const App: React.FC = () => {
                                 <Route key={desk.id} path={`/trade/${desk.id}`} element={<DeskView desk={desk} />} />
                             ))}
                             <Route path="/agents" element={<AgentFarm />} />
+                            <Route path="/rooms" element={<AgentRooms />} />
                             <Route path="/settings" element={<AdminConsole />} />
                             <Route path="*" element={<Navigate to="/trade/overview" replace />} />
                         </Routes>

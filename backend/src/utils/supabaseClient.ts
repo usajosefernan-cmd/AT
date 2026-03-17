@@ -137,3 +137,45 @@ export async function updateSystemConfig(updates: Record<string, any>) {
 
     if (error) console.error("[Supabase] Error updating config:", error.message);
 }
+
+// ═══════════════════════════════════════════
+// Market Rules Persistence (MARKET_RULES)
+// ═══════════════════════════════════════════
+
+export async function saveMarketRules(rules: Record<string, any>) {
+    const { error } = await supabase
+        .from("agent_memory")
+        .upsert({
+            agent_id: "system",
+            key: "market_rules",
+            content: JSON.stringify(rules),
+            updated_at: new Date().toISOString(),
+        }, { onConflict: "agent_id,key" });
+
+    if (error) console.error("[Supabase] Error saving market rules:", error.message);
+    else console.log("[Supabase] ✅ MARKET_RULES guardadas en Supabase.");
+}
+
+export async function loadMarketRules(): Promise<Record<string, any> | null> {
+    const { data, error } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("agent_id", "system")
+        .eq("key", "market_rules")
+        .single();
+
+    if (error && error.code !== "PGRST116") {
+        console.error("[Supabase] Error loading market rules:", error.message);
+    }
+    if (data?.content) {
+        try {
+            const rules = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+            console.log("[Supabase] ✅ MARKET_RULES cargadas desde Supabase.");
+            return rules;
+        } catch {
+            console.error("[Supabase] Error parsing market rules JSON.");
+        }
+    }
+    return null;
+}
+

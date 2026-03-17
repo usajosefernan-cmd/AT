@@ -182,57 +182,85 @@ export const MarketContext: React.FC = () => {
         chartRef.current?.timeScale().fitContent();
     }, [history]);
 
+    // Keep real-time track of the latest candle state to avoid timestamp backwards crash
+    const lastCandleRef = useRef<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number } | null>(null);
+
+    // Sync ref when history loads
+    useEffect(() => {
+        if (history.length > 0) {
+            lastCandleRef.current = { ...history[history.length - 1] };
+        }
+    }, [history]);
+
     // Update with real-time candles from WebSocket
     useEffect(() => {
-        if (!latestCandle || !candlestickSeriesRef.current || !volumeSeriesRef.current || history.length === 0) return;
+        if (!latestCandle || !candlestickSeriesRef.current || !volumeSeriesRef.current) return;
 
         // Ensure the candle belongs to the active symbol
         if (latestCandle.symbol !== activeSymbol) return;
 
         const t = Math.floor(latestCandle.timestamp / 1000) as Time;
-
-        candlestickSeriesRef.current.update({
-            time: t,
+        lastCandleRef.current = {
+            timestamp: latestCandle.timestamp,
             open: latestCandle.open,
             high: latestCandle.high,
             low: latestCandle.low,
             close: latestCandle.close,
-        });
+            volume: latestCandle.volume
+        };
 
-        volumeSeriesRef.current.update({
-            time: t,
-            value: latestCandle.volume,
-            color: latestCandle.close >= latestCandle.open ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
-        });
-    }, [latestCandle, activeSymbol, history]);
+        try {
+            candlestickSeriesRef.current.update({
+                time: t,
+                open: latestCandle.open,
+                high: latestCandle.high,
+                low: latestCandle.low,
+                close: latestCandle.close,
+            });
+
+            volumeSeriesRef.current.update({
+                time: t,
+                value: latestCandle.volume,
+                color: latestCandle.close >= latestCandle.open ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
+            });
+        } catch (e) {
+            console.error("Candle update error:", e);
+        }
+    }, [latestCandle, activeSymbol]);
 
     // Update with real-time TICKS from WebSocket to make chart 100% live
     useEffect(() => {
-        if (!priceData || priceData.price === undefined || !candlestickSeriesRef.current || history.length === 0) return;
-
-        const lastCandle = history[history.length - 1];
-        
-        // Safety check to avoid weird past ticks warping the current candle
-        if (priceData.timestamp < lastCandle.timestamp - 60000) return;
+        if (!priceData || priceData.price === undefined || !candlestickSeriesRef.current || priceData.symbol !== activeSymbol) return;
 
         const currentPrice = priceData.price;
-        const newHigh = Math.max(lastCandle.high, currentPrice);
-        const newLow = Math.min(lastCandle.low, currentPrice);
+        let c = lastCandleRef.current;
+        
+        if (!c) {
+            c = { timestamp: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, volume: 0 };
+            lastCandleRef.current = c;
+        }
 
-        lastCandle.high = newHigh;
-        lastCandle.low = newLow;
-        lastCandle.close = currentPrice;
+        // Ignore ticks that are too old (e.g. from a delayed WS message)
+        if (priceData.timestamp < c.timestamp - 60000) return;
 
-        const t = Math.floor(lastCandle.timestamp / 1000) as Time;
+        c.high = Math.max(c.high, currentPrice);
+        c.low = Math.min(c.low, currentPrice);
+        c.close = currentPrice;
 
-        candlestickSeriesRef.current.update({
-            time: t,
-            open: lastCandle.open,
-            high: newHigh,
-            low: newLow,
-            close: currentPrice,
-        });
-    }, [priceData, history]);
+        const t = Math.floor(c.timestamp / 1000) as Time;
+
+        try {
+            candlestickSeriesRef.current.update({
+                time: t,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+            });
+        } catch (e) {
+            console.error("Tick update error:", e);
+        }
+    }, [priceData, activeSymbol]);
 
     return (
         <div className="flex flex-col h-full bg-[#0b0e14] overflow-hidden">

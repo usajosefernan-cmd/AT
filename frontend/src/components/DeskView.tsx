@@ -13,8 +13,27 @@ interface Props { desk: DeskConfig; }
 const DeskView: React.FC<Props> = ({ desk }) => {
     const [forceLoading, setForceLoading] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
-    const selectedSymbol = useStore(s => s.selectedSymbols[desk.id]) || (desk.symbols[0] || "BTC");
+    const [dynamicSymbols, setDynamicSymbols] = useState<string[]>(desk.symbols);
+    const selectedSymbol = useStore(s => s.selectedSymbols[desk.id]) || dynamicSymbols[0];
     const setSelectedSymbol = useStore(s => s.setSelectedSymbol);
+
+    React.useEffect(() => {
+        const fetchRadarSymbols = async () => {
+            try {
+                const url = import.meta.env.VITE_API_URL || "http://localhost:8080";
+                const exchangeParam = desk.exchange === "ALL" ? "hyperliquid" : desk.exchange; // Default global to HL
+                const res = await fetch(`${url}/api/radar/${exchangeParam}`);
+                const data = await res.json();
+                
+                if (data.success && data.symbols && data.symbols.length > 0) {
+                    setDynamicSymbols(data.symbols);
+                }
+            } catch (err) {
+                console.error("Failed to fetch radar symbols:", err);
+            }
+        };
+        fetchRadarSymbols();
+    }, [desk.exchange]);
 
     const handleForceAnalysis = async () => {
         setForceLoading(true);
@@ -76,7 +95,7 @@ const DeskView: React.FC<Props> = ({ desk }) => {
                                     }}
                                     className="w-full appearance-none bg-[#111622] border border-[#1a1f2e] text-white text-[12px] font-black font-mono pl-4 pr-10 py-2.5 rounded-xl outline-none focus:border-[#4a6cf7] transition-all cursor-pointer hover:bg-[#161c2b] shadow-lg"
                                 >
-                                    {desk.symbols.map(s => (
+                                    {dynamicSymbols.map(s => (
                                         <option key={s} value={s}>{s}</option>
                                     ))}
                                 </select>
@@ -151,8 +170,7 @@ const DeskView: React.FC<Props> = ({ desk }) => {
                         </ErrorBoundary>
                     </div>
 
-                    <div className="mt-auto space-y-2 p-4 bg-[#0b0e14]/50">
-                        {/* Hunter Pause/Resume Control */}
+                    <div className="mt-auto space-y-2 p-4 bg-[#0b0e14]/50 border-t border-[#1a1f2e]">
                         <ErrorBoundary name="HunterControl">
                             <HunterControl />
                         </ErrorBoundary>

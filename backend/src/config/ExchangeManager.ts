@@ -183,31 +183,120 @@ export const ALPACA_CONFIG: ExchangeConfig = {
 // Se aplican como RESTRICCIONES sobre todos los demás exchanges.
 // ═══════════════════════════════════════════
 // ═══════════════════════════════════════════
-// AXI SELECT — Forex Prop Trading (Reglas estrictas)
-// Estas son las reglas de evaluación del Prop Firm, no un exchange directo.
-// Se aplican como RESTRICCIONES sobre todos los demás exchanges.
+// REGLAS GLOBALES (aplican a todos los mercados como límite superior)
 // ═══════════════════════════════════════════
 export let AXI_SELECT_RULES = {
-    maxDailyDrawdownPct: 5.0,     // 5% max pérdida diaria sobre equity
-    maxTotalDrawdownPct: 10.0,    // 10% max pérdida total desde peak equity
-    maxLotSize: 5.0,              // Lotes máximos por operación (en Forex estándar)
-    profitTargetPct: 10.0,        // Objetivo de profit para pasar la evaluación
-    minTradingDays: 5,            // Días mínimos con al menos 1 trade
-    maxTradeDuration: null,       // Sin límite de duración
-    newsTrading: true,            // Permitido operar en noticias
-    weekendHolding: false,        // NO mantener posiciones durante el fin de semana
-    hedgingAllowed: false,        // NO se permite hedging (posiciones opuestas en el mismo par)
+    maxDailyDrawdownPct: 5.0,
+    maxTotalDrawdownPct: 10.0,
+    maxPositionPct: 50.0,
+    maxRiskPerTradePct: 5.0,
+    maxLeverage: 1,
+    maxLotSize: 5.0,
+    profitTargetPct: 10.0,
+    minTradingDays: 5,
+    maxTradeDuration: null as number | null,
+    newsTrading: true,
+    weekendHolding: false,
+    hedgingAllowed: false,
+    maxCorrelatedPositions: 10,
 };
+
+// ═══════════════════════════════════════════
+// REGLAS POR MERCADO (cada mercado tiene su propia config)
+// Los agentes L3 leen de aquí para sus decisiones
+// ═══════════════════════════════════════════
+export interface MarketRuleSet {
+    maxLeverage: number;
+    maxPositionPct: number;       // % del equity por posición
+    maxRiskPerTradePct: number;   // % del equity en riesgo por trade
+    style: 'scalping' | 'intraday' | 'swing' | 'position';
+    maxHoldMinutes: number | null; // null = sin límite
+    description: string;
+}
+
+export const MARKET_RULES: Record<string, MarketRuleSet> = {
+    crypto: {
+        maxLeverage: 10,
+        maxPositionPct: 30,
+        maxRiskPerTradePct: 3,
+        style: 'swing',
+        maxHoldMinutes: null,      // swing = sin límite
+        description: 'Cripto Majors (BTC, ETH, SOL...) — Perps con leverage',
+    },
+    memecoins: {
+        maxLeverage: 1,            // Memes: SIN apalancamiento
+        maxPositionPct: 10,        // Posiciones pequeñas (alto riesgo)
+        maxRiskPerTradePct: 2,
+        style: 'scalping',
+        maxHoldMinutes: 60,        // Máx 1 hora — intraday rápido
+        description: 'Sniper Meme (DOGE, SHIB, etc.) — Spot, intraday rápido',
+    },
+    equities: {
+        maxLeverage: 1,            // Acciones: sin leverage
+        maxPositionPct: 25,
+        maxRiskPerTradePct: 3,
+        style: 'position',
+        maxHoldMinutes: null,       // Position trading
+        description: 'Acciones US (AAPL, TSLA, SPY) — Sin leverage, swing/position',
+    },
+    forex: {
+        maxLeverage: 30,           // Axi Select permite hasta 100x, default 30
+        maxPositionPct: 20,
+        maxRiskPerTradePct: 2,
+        style: 'intraday',
+        maxHoldMinutes: 480,       // 8 horas max (no overnight si weekendHolding=false)
+        description: 'Forex/Divisas (EUR/USD, XAU) — Prop firm Axi, leverage alto',
+    },
+    small_caps: {
+        maxLeverage: 1,            // Small caps: SIN leverage
+        maxPositionPct: 10,        // Riesgo controlado
+        maxRiskPerTradePct: 2,
+        style: 'scalping',
+        maxHoldMinutes: 30,        // Máx 30 min — scalping puro
+        description: 'Small/Micro Caps — Sin leverage, intraday ultra-rápido',
+    },
+};
+
+/** Obtener reglas de un mercado específico */
+export function getMarketRules(market: string): MarketRuleSet {
+    return MARKET_RULES[market] || MARKET_RULES.crypto;
+}
 
 /**
  * Hot-reload risk limits from Admin Console / Supabase
+ * Soporta keys globales (risk_*) y por mercado (market_crypto_*, market_memes_*, etc.)
  */
 export function updateRule(key: string, value: any) {
     const numVal = parseFloat(value);
     
+    // ── Keys por mercado: market_{mercado}_{campo} ──
+    const marketMatch = key.match(/^market_(\w+)_(\w+)$/);
+    if (marketMatch) {
+        const [, market, field] = marketMatch;
+        if (MARKET_RULES[market]) {
+            if (field === 'leverage') MARKET_RULES[market].maxLeverage = Math.max(1, Math.floor(numVal));
+            if (field === 'position_pct') MARKET_RULES[market].maxPositionPct = numVal;
+            if (field === 'risk_per_trade') MARKET_RULES[market].maxRiskPerTradePct = numVal;
+            if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
+            console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
+            return;
+        }
+    }
+
+    // ── Keys globales ──
     if (key === "risk_max_daily_dd_pct") AXI_SELECT_RULES.maxDailyDrawdownPct = numVal;
     if (key === "risk_max_total_dd_pct") AXI_SELECT_RULES.maxTotalDrawdownPct = numVal;
+    if (key === "risk_max_position_pct" || key === "risk_max_position_size_pct") AXI_SELECT_RULES.maxPositionPct = numVal;
+    if (key === "risk_max_risk_per_trade_pct") AXI_SELECT_RULES.maxRiskPerTradePct = numVal;
+    if (key === "risk_max_leverage") AXI_SELECT_RULES.maxLeverage = Math.max(1, Math.floor(numVal));
+    if (key === "risk_max_correlated_positions") AXI_SELECT_RULES.maxCorrelatedPositions = Math.floor(numVal);
+    if (key === "risk_weekend_holding") AXI_SELECT_RULES.weekendHolding = value === true || value === "true";
+    if (key === "risk_hedging_allowed") AXI_SELECT_RULES.hedgingAllowed = value === true || value === "true";
     
+    // Leverage por mercado desde campos legacy de la consola
+    if (key === "risk_max_leverage_crypto") MARKET_RULES.crypto.maxLeverage = Math.max(1, Math.floor(numVal));
+    if (key === "risk_max_leverage_forex") MARKET_RULES.forex.maxLeverage = Math.max(1, Math.floor(numVal));
+
     if (key === "risk_max_notional_per_trade") {
         HYPERLIQUID_CONFIG.maxNotionalPerTrade = numVal;
         MEXC_CONFIG.maxNotionalPerTrade = numVal;

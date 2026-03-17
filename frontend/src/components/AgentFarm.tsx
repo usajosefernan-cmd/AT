@@ -183,7 +183,7 @@ const AgentFarm: React.FC = () => {
     }, [assetsLoaded]);
 
     return (
-        <div className="h-full w-full bg-[#060a10] relative overflow-hidden flex flex-col">
+        <div style={{ position: 'absolute', inset: 0, background: '#060a10', overflow: 'hidden' }}>
             {!assetsLoaded && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#060a10]/80 backdrop-blur-sm">
                     <div className="w-12 h-12 border-4 border-[#4a6cf7]/20 border-t-[#4a6cf7] rounded-full animate-spin mb-4" />
@@ -194,7 +194,7 @@ const AgentFarm: React.FC = () => {
             )}
 
             {/* The actual Pixel Office App */}
-            <div className="flex-1 w-full h-full relative">
+            <div style={{ position: 'absolute', inset: 0 }}>
                 <OfficeApp />
             </div>
         </div>

@@ -39,12 +39,27 @@ async function internalOBEvaluation(data: any): Promise<OrderbookEvaluation> {
     console.log(`\n\x1b[36m[L2 Orderbook Analyst]\x1b[0m Analizando cinta profunda para Cripto Majors...`);
     await new Promise(r => setTimeout(r, 400));
     
-    // Simular lógica de LLM / Microestructura
-    const isAggressive = data.cvd_1m && data.cvd_1m > 1000000;
+    // L1 wraps data in FlowAnomalyAlert: { symbol, timestamp, type, data: { cvd_1m, ... } }
+    // Unwrap nested data if present
+    const raw = data.data || data;
+    
+    // Evaluar agresividad usando datos reales de CVD y OI
+    const cvdAbs = Math.abs(raw.cvd_1m || 0);
+    const oiDelta = raw.open_interest_delta || 0;
+    
+    // Score: CVD > 5 BTC es significativo, OI delta > 2% es agresivo
+    const cvdScore = Math.min(50, cvdAbs * 10);  // 5 BTC → 50 pts
+    const oiScore = Math.min(50, oiDelta * 15);   // 3.3% → 50 pts
+    const totalScore = Math.round(cvdScore + oiScore);
+    
+    const isAggressive = totalScore >= 50;
+    console.log(`\x1b[36m[L2 Orderbook]\x1b[0m ${raw.symbol || '??'}: CVD=${cvdAbs.toFixed(3)} (${cvdScore.toFixed(0)}pts) + OI=${oiDelta.toFixed(1)}% (${oiScore.toFixed(0)}pts) = ${totalScore}pts → ${isAggressive ? '✅ PASA' : '❌ RECHAZADO'}`);
     
     return {
-        tactical_score: isAggressive ? 85 : 40,
-        analysis: isAggressive ? "Absorción masiva en los asks rompiendo la pared. Orderbook imbalance 70/30 a favor de compras agresivas." : "Rango lateral normal.",
+        tactical_score: Math.min(100, totalScore),
+        analysis: isAggressive 
+            ? `CVD agresivo (${cvdAbs.toFixed(2)}) + OI delta ${oiDelta.toFixed(1)}%. Orderbook imbalance detectado. Posible movimiento institucional.` 
+            : `CVD moderado (${cvdAbs.toFixed(2)}). Rango lateral sin presión direccional clara.`,
         spoofing_detected: false
     };
 }

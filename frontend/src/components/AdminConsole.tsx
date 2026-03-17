@@ -2,47 +2,33 @@ import React, { useState, useEffect } from "react";
 import { Settings, Shield, RefreshCw, Key, Database, Eye, EyeOff, Save, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { supabase } from "../utils/supabaseClient";
 
-interface ConfigState {
-    risk_max_daily_dd_pct: string;
-    risk_max_total_dd_pct: string;
-    risk_max_position_size_pct: string;
-    risk_max_leverage_crypto: string;
-    risk_max_leverage_forex: string;
-    risk_max_open_positions: string;
-    risk_max_notional_per_trade: string;
-    risk_axi_auto_lock_dd_pct: string;
-    paper_initial_balance: string;
-    mexc_api_key: string;
-    mexc_api_secret: string;
-    hyperliquid_wallet: string;
-    hyperliquid_private_key: string;
-    alpaca_api_key: string;
-    alpaca_api_secret: string;
-    agent_ceo_mission: string;
-    agent_sentinel_mission: string;
-    agent_risk_mission: string;
-    agent_perp_mission: string;
-    agent_sniper_mission: string;
-    agent_equity_mission: string;
-    agent_forex_mission: string;
-}
+// Use dynamic keys — supports global config + per-market rules
+type ConfigState = Record<string, string>;
 
 const defaultConfig: ConfigState = {
-    risk_max_daily_dd_pct: "5",
-    risk_max_total_dd_pct: "10",
-    risk_max_position_size_pct: "20",
-    risk_max_leverage_crypto: "10",
-    risk_max_leverage_forex: "30",
-    risk_max_open_positions: "10",
-    risk_max_notional_per_trade: "5000",
-    risk_axi_auto_lock_dd_pct: "4.5",
-    paper_initial_balance: "10000",
+    // Per-market defaults
+    market_crypto_daily_dd: "5", market_crypto_total_dd: "10", market_crypto_max_notional: "5000", market_crypto_balance: "10000",
+    market_crypto_leverage: "10", market_crypto_position_pct: "30", market_crypto_risk_per_trade: "3", market_crypto_hold_minutes: "0",
+    
+    market_memecoins_daily_dd: "5", market_memecoins_total_dd: "10", market_memecoins_max_notional: "5000", market_memecoins_balance: "10000",
+    market_memecoins_leverage: "1", market_memecoins_position_pct: "10", market_memecoins_risk_per_trade: "2", market_memecoins_hold_minutes: "60",
+    
+    market_equities_daily_dd: "5", market_equities_total_dd: "10", market_equities_max_notional: "5000", market_equities_balance: "10000",
+    market_equities_leverage: "1", market_equities_position_pct: "25", market_equities_risk_per_trade: "3", market_equities_hold_minutes: "0",
+    
+    market_forex_daily_dd: "5", market_forex_total_dd: "10", market_forex_max_notional: "5000", market_forex_balance: "10000",
+    market_forex_leverage: "30", market_forex_position_pct: "20", market_forex_risk_per_trade: "2", market_forex_hold_minutes: "480",
+    
+    market_small_caps_daily_dd: "5", market_small_caps_total_dd: "10", market_small_caps_max_notional: "5000", market_small_caps_balance: "10000",
+    market_small_caps_leverage: "1", market_small_caps_position_pct: "10", market_small_caps_risk_per_trade: "2", market_small_caps_hold_minutes: "30",
+    // API keys
     mexc_api_key: "",
     mexc_api_secret: "",
     hyperliquid_wallet: "",
     hyperliquid_private_key: "",
     alpaca_api_key: "",
     alpaca_api_secret: "",
+    // Agent missions
     agent_ceo_mission: "Dirigir el enjambre hacia la rentabilidad máxima protegiendo el capital.",
     agent_sentinel_mission: "Detectar anomalías de volumen y momentum en milisegundos.",
     agent_risk_mission: "Audit de cumplimiento estricto de las reglas de Axi Select.",
@@ -58,24 +44,46 @@ const AdminConsole: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
     const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+    const [activeMarket, setActiveMarket] = useState("crypto");
 
     const loadConfig = async () => {
         setLoading(true);
         setMessage(null);
         try {
             const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
+            
+            // Load general config from Supabase
             const response = await fetch(`${API}/api/config`);
             const data = await response.json();
-
+            const loadedConfig = { ...defaultConfig };
             if (data.success && data.config) {
-                const loadedConfig = { ...defaultConfig };
                 data.config.forEach((row: any) => {
                     if (row.key in loadedConfig) {
                         (loadedConfig as any)[row.key] = String(row.value);
                     }
                 });
-                setConfigs(loadedConfig);
             }
+
+            // Load market rules from backend (in-memory MARKET_RULES)
+            try {
+                const riskRes = await fetch(`${API}/api/config/risk`);
+                const riskData = await riskRes.json();
+                if (riskData.markets) {
+                    for (const [marketId, rules] of Object.entries(riskData.markets)) {
+                        const r = rules as any;
+                        loadedConfig[`market_${marketId}_daily_dd`] = String(r.maxDailyDrawdownPct ?? "5");
+                        loadedConfig[`market_${marketId}_total_dd`] = String(r.maxTotalDrawdownPct ?? "10");
+                        loadedConfig[`market_${marketId}_max_notional`] = String(r.maxNotionalPerTrade ?? "5000");
+                        loadedConfig[`market_${marketId}_balance`] = String(r.initialBalance ?? "10000");
+                        loadedConfig[`market_${marketId}_leverage`] = String(r.maxLeverage ?? "");
+                        loadedConfig[`market_${marketId}_position_pct`] = String(r.maxPositionPct ?? "");
+                        loadedConfig[`market_${marketId}_risk_per_trade`] = String(r.maxRiskPerTradePct ?? "");
+                        loadedConfig[`market_${marketId}_hold_minutes`] = String(r.maxHoldMinutes ?? 0);
+                    }
+                }
+            } catch {}
+
+            setConfigs(loadedConfig);
         } catch (err) {
             console.error("Failed to load config:", err);
             setMessage({ text: "Error de enlace con el servidor central.", type: 'error' });
@@ -86,7 +94,7 @@ const AdminConsole: React.FC = () => {
 
     useEffect(() => { loadConfig(); }, []);
 
-    const handleChange = (key: keyof ConfigState, value: string) => {
+    const handleChange = (key: string, value: string) => {
         setConfigs(prev => ({ ...prev, [key]: value }));
     };
 
@@ -97,21 +105,76 @@ const AdminConsole: React.FC = () => {
 
         try {
             const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
-            const savePromises = Object.entries(configs).map(([key, value]) =>
-                fetch(`${API}/api/config`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ key, value: String(value) }),
-                }).then(res => res.json())
-            );
-
+            
+            // 1) Guardar TODOS los params en Supabase (persistencia)
+            const savePromises = Object.entries(configs)
+                .filter(([key]) => !key.startsWith("market_")) // market_* se guardan via /api/config/risk
+                .map(([key, value]) =>
+                    fetch(`${API}/api/config`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ key, value: String(value) }),
+                    }).then(res => res.json())
+                );
             const results = await Promise.all(savePromises);
             const failures = results.filter(r => !r.success);
+
+            // 2) Hot-reload: enviar risk_* Y market_* al backend para actualizar MARKET_RULES + AXI_SELECT_RULES
+            const payload: any = {
+            // Agent directives
+            agent_ceo_mission: configs.agent_ceo_mission,
+            agent_risk_strict: configs.agent_risk_strict,
+            agent_sentiment_threshold: Number(configs.agent_sentiment_threshold),
+            // API keys
+            mexc_api_key: configs.mexc_api_key,
+            mexc_api_secret: configs.mexc_api_secret,
+            openai_api_key: configs.openai_api_key,
+            hyperliquid_wallet: configs.hyperliquid_wallet,
+            hyperliquid_private_key: configs.hyperliquid_private_key,
+            market_rules: {}
+        };
+
+        const marketRules: Record<string, any> = {};
+        for (const [key, val] of Object.entries(configs)) {
+            if (key.startsWith('market_')) {
+                const parts = key.split('_');
+                // Could be market_crypto_daily_dd or market_small_caps_leverage
+                const typeIndex = parts.indexOf('crypto') !== -1 ? parts.indexOf('crypto') :
+                                  parts.indexOf('memecoins') !== -1 ? parts.indexOf('memecoins') :
+                                  parts.indexOf('equities') !== -1 ? parts.indexOf('equities') :
+                                  parts.indexOf('forex') !== -1 ? parts.indexOf('forex') :
+                                  parts.indexOf('caps') !== -1 ? parts.indexOf('caps') : -1;
+                
+                if (typeIndex !== -1) {
+                    const marketId = parts.slice(1, typeIndex + 1).join('_');
+                    const field = parts.slice(typeIndex + 1).join('_');
+                    
+                    if (!marketRules[marketId]) marketRules[marketId] = {};
+                    
+                    if (field === 'daily_dd') marketRules[marketId].maxDailyDrawdownPct = Number(val);
+                    if (field === 'total_dd') marketRules[marketId].maxTotalDrawdownPct = Number(val);
+                    if (field === 'max_notional') marketRules[marketId].maxNotionalPerTrade = Number(val);
+                    if (field === 'balance') marketRules[marketId].initialBalance = Number(val);
+                    
+                    if (field === 'leverage') marketRules[marketId].maxLeverage = Number(val);
+                    if (field === 'position_pct') marketRules[marketId].maxPositionPct = Number(val);
+                    if (field === 'risk_per_trade') marketRules[marketId].maxRiskPerTradePct = Number(val);
+                    if (field === 'hold_minutes') marketRules[marketId].maxHoldMinutes = Number(val);
+                }
+            }
+        }
+        payload.markets = marketRules;
+            
+            await fetch(`${API}/api/config/risk`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
 
             if (failures.length > 0) {
                 setMessage({ text: `Atención: ${failures.length} parámetros no sincronizados.`, type: 'error' });
             } else {
-                setMessage({ text: "Configuración global actualizada con éxito.", type: 'success' });
+                setMessage({ text: "✅ Config actualizada y guardada en Supabase. Agentes notificados.", type: 'success' });
             }
         } catch (err) {
             console.error("Failed to save config:", err);
@@ -126,12 +189,12 @@ const AdminConsole: React.FC = () => {
         setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const ConfigField = ({ label, k, type = "text" }: { label: string, k: keyof ConfigState, type?: string }) => {
+    const renderConfigField = (label: string, k: string, type = "text") => {
         const isSecret = k.includes('key') || k.includes('secret') || k.includes('private') || k.includes('wallet');
         const show = showSecrets[k];
 
         return (
-            <div className="flex flex-col gap-2 mb-4 group">
+            <div key={k} className="flex flex-col gap-2 mb-4 group">
                 <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black text-[#5a6577] uppercase tracking-widest group-hover:text-[#4a6cf7] transition-colors">
                         {label}
@@ -143,7 +206,7 @@ const AdminConsole: React.FC = () => {
                 <div className="relative group/input">
                     <input
                         type={isSecret && !show ? "password" : "text"}
-                        value={configs[k]}
+                        value={configs[k] || ""}
                         onChange={(e) => handleChange(k, e.target.value)}
                         className="w-full bg-[#0b0e14] border border-[#1a1f2e] group-hover/input:border-[#4a6cf7]/30 rounded-xl px-4 py-3 text-[11px] font-mono text-white focus:outline-none focus:ring-1 focus:ring-[#4a6cf7]/30 transition-all placeholder-[#2a3545]"
                         placeholder={`Ingresar ${label.toLowerCase()}...`}
@@ -197,26 +260,140 @@ const AdminConsole: React.FC = () => {
                 <form onSubmit={handleSave} className="max-w-6xl mx-auto space-y-10">
                     
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                        {/* RISK SECTION */}
+                        {/* UNIFIED RISK SECTION */}
                         <div className="space-y-8 animate-in fade-in slide-in-from-left duration-700">
                             <div className="flex items-center gap-3 mb-2 px-2">
                                 <Shield size={18} className="text-[#4a6cf7]" />
-                                <h3 className="text-[12px] font-black text-white uppercase tracking-[0.3em]">Protocolos de Gestión de Riesgo</h3>
+                                <h3 className="text-[12px] font-black text-white uppercase tracking-[0.3em]">Gestión de Riesgo por Ecosistema</h3>
                             </div>
                             
-                            <div className="p-8 bg-[#0b0e14]/60 border border-[#1a1f2e] rounded-3xl backdrop-blur-sm relative overflow-hidden group">
-                                <div className="absolute top-0 left-0 w-1.5 h-full bg-[#4a6cf7]/20 group-hover:bg-[#4a6cf7]/50 transition-all duration-500" />
+                            {/* Unified Per-Market Rules */}
+                            <div className="bg-[#0b0e14]/60 border border-[#1a1f2e] rounded-3xl backdrop-blur-sm relative overflow-hidden flex min-h-[450px] shadow-xl">
+                                {/* Sidebar for Market Selection */}
+                                <div className="w-[180px] border-r border-[#1a1f2e] bg-[#060a10]/80 p-4 space-y-2 shrink-0">
+                                    <div className="text-[8px] font-black text-[#5a6577] uppercase tracking-[0.3em] mb-4">Ecosistemas</div>
+                                    {[
+                                        { id: "crypto", label: "Cripto", icon: "₿", color: "#a78bfa" },
+                                        { id: "memecoins", label: "Memecoins", icon: "🐸", color: "#f472b6" },
+                                        { id: "equities", label: "Acciones", icon: "📊", color: "#22c55e" },
+                                        { id: "forex", label: "Forex", icon: "💱", color: "#f59e0b" },
+                                        { id: "small_caps", label: "Small Caps", icon: "🔬", color: "#06b6d4" },
+                                    ].map(market => (
+                                        <button
+                                            key={market.id}
+                                            type="button"
+                                            onClick={() => setActiveMarket(market.id)}
+                                            className={`w-full text-left px-3 py-3 rounded-xl transition-all border-l-4 group flex items-center gap-2 ${activeMarket === market.id ? 'bg-white/5' : 'border-transparent hover:bg-white/5 opacity-50 hover:opacity-100'}`}
+                                            style={{ borderLeftColor: activeMarket === market.id ? market.color : 'transparent' }}
+                                        >
+                                            <span className="text-[14px]" style={{ color: market.color }}>{market.icon}</span>
+                                            <span className="text-[10px] font-black text-white tracking-widest uppercase">{market.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
                                 
-                                <div className="grid grid-cols-1 gap-2">
-                                    <ConfigField label="Drawdown Diario Máximo" k="risk_max_daily_dd_pct" />
-                                    <ConfigField label="Drawdown Total Máximo" k="risk_max_total_dd_pct" />
-                                    <ConfigField label="Tamaño Máximo de Posición" k="risk_max_position_size_pct" />
-                                    <ConfigField label="Notional Máximo por Operación" k="risk_max_notional_per_trade" />
-                                    <ConfigField label="Límite de Posiciones Abiertas" k="risk_max_open_positions" />
-                                    <ConfigField label="Apalancamiento Máximo Cripto" k="risk_max_leverage_crypto" />
-                                    <ConfigField label="Apalancamiento Máximo Forex" k="risk_max_leverage_forex" />
-                                    <ConfigField label="Umbral de Auto-Bloqueo Axi" k="risk_axi_auto_lock_dd_pct" />
-                                    <ConfigField label="Balance Inicial Simulado" k="paper_initial_balance" />
+                                {/* Active Market Config */}
+                                <div className="flex-1 p-6 relative">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#4a6cf7]/5 blur-3xl rounded-full opacity-50 pointer-events-none" />
+                                    {(() => {
+                                        const m = [
+                                            { id: "crypto", label: "Criptomonedas", icon: "₿", color: "#a78bfa", desc: "Perpetuos de alta liquidez con apalancamiento." },
+                                            { id: "memecoins", label: "Memecoins", icon: "🐸", color: "#f472b6", desc: "Spot trading para explosiones intra-día." },
+                                            { id: "equities", label: "Acciones US", icon: "📊", color: "#22c55e", desc: "Mid/Large caps sin apalancamiento." },
+                                            { id: "forex", label: "Forex / Oro", icon: "💱", color: "#f59e0b", desc: "Axi Prop Firm con gestión de riesgo estricta." },
+                                            { id: "small_caps", label: "Small Caps", icon: "🔬", color: "#06b6d4", desc: "Penny stocks sin apalancamiento, alta volatilidad." },
+                                        ].find(x => x.id === activeMarket)!;
+                                        
+                                        return (
+                                            <div className="animate-in fade-in zoom-in-95 duration-300 h-full flex flex-col">
+                                                <div className="flex items-center gap-4 mb-8">
+                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#111622] border border-[#1a1f2e] text-[16px] shadow-lg" style={{ color: m.color }}>
+                                                        {m.icon}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-[12px] font-black text-white uppercase tracking-widest">{m.label}</h4>
+                                                        <p className="text-[9px] text-[#5a6577] font-mono mt-0.5">{m.desc}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 gap-y-2 flex-1 overflow-y-auto pr-2 no-scrollbar">
+                                                    <div className="col-span-1 md:col-span-2 pt-2 border-b border-[#1a1f2e]/50 pb-2 mb-2">
+                                                        <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest">Protección de Capital</span>
+                                                    </div>
+                                                    {renderConfigField("Drawdown Diario (%)", `market_${m.id}_daily_dd`)}
+                                                    {renderConfigField("Drawdown Total (%)", `market_${m.id}_total_dd`)}
+                                                    {renderConfigField("Notional Máximo ($)", `market_${m.id}_max_notional`)}
+                                                    {renderConfigField("Balance Inicial Simulado ($)", `market_${m.id}_balance`)}
+
+                                                    <div className="col-span-1 md:col-span-2 mt-2 pt-4 border-t border-[#1a1f2e]/50 pb-2 mb-2">
+                                                        <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest">Reglas Operativas</span>
+                                                    </div>
+                                                    {renderConfigField("Leverage Máximo", `market_${m.id}_leverage`)}
+                                                    {renderConfigField("Tamaño Posición (%)", `market_${m.id}_position_pct`)}
+                                                    {renderConfigField("Riesgo / Trade (%)", `market_${m.id}_risk_per_trade`)}
+                                                    {renderConfigField("Max Hold (Minutos)", `market_${m.id}_hold_minutes`)}
+                                                    
+                                                    {m.id === 'forex' && (
+                                                        <>
+                                                            <div className="col-span-1 md:col-span-2 mt-2 pt-4 border-t border-[#1a1f2e]">
+                                                                <span className="text-[8px] font-black text-[#f59e0b] uppercase tracking-widest">Reglas Específicas: Prop Firm</span>
+                                                            </div>
+                                                            {renderConfigField("SL Dinámico (Bps)", `market_${m.id}_sl_bps`)}
+                                                            {renderConfigField("TP Target (Bps)", `market_${m.id}_tp_bps`)}
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* Emergency Actions for Active Market */}
+                                                <div className="mt-6 pt-6 border-t border-[#1a1f2e] flex items-center justify-between">
+                                                    <div className="flex gap-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
+                                                                try {
+                                                                    const res = await fetch(`${API}/api/paper/reset-dd`, { 
+                                                                        method: "POST",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ market: m.id })
+                                                                    });
+                                                                    const data = await res.json();
+                                                                    setMessage({ text: `✅ DD Reseteado para ${m.label}`, type: 'success' });
+                                                                    setTimeout(() => setMessage(null), 4000);
+                                                                } catch { setMessage({ text: "Error al resetear DD", type: 'error' }); }
+                                                            }}
+                                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#f59e0b]/10 border border-[#f59e0b]/30 text-[#f59e0b] text-[9px] font-black uppercase tracking-widest hover:bg-[#f59e0b]/20 transition-all font-mono"
+                                                        >
+                                                            <RefreshCw size={12} />
+                                                            Reset DD Diario
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                if (!confirm(`¿Reiniciar balance de ${m.label}? Se cerrarán las posiciones de este mercado.`)) return;
+                                                                const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
+                                                                try {
+                                                                    const bal = parseFloat(configs[`market_${m.id}_balance`]) || 10000;
+                                                                    const res = await fetch(`${API}/api/paper/reset-balance`, { 
+                                                                        method: "POST", 
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ market: m.id, balance: bal }) 
+                                                                    });
+                                                                    const data = await res.json();
+                                                                    setMessage({ text: `✅ Balance de ${m.label} reiniciado`, type: 'success' });
+                                                                    setTimeout(() => setMessage(null), 4000);
+                                                                } catch { setMessage({ text: "Error al resetear balance", type: 'error' }); }
+                                                            }}
+                                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#ef4444]/10 border border-[#ef4444]/30 text-[#ef4444] text-[9px] font-black uppercase tracking-widest hover:bg-[#ef4444]/20 transition-all font-mono"
+                                                        >
+                                                            <AlertTriangle size={12} />
+                                                            Reset Balance
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -232,12 +409,12 @@ const AdminConsole: React.FC = () => {
                                 <div className="absolute top-0 left-0 w-1.5 h-full bg-[#f59e0b]/20 group-hover:bg-[#f59e0b]/50 transition-all duration-500" />
                                 
                                 <div className="grid grid-cols-1 gap-2">
-                                    <ConfigField label="MEXC API KEY" k="mexc_api_key" />
-                                    <ConfigField label="MEXC SECRET" k="mexc_api_secret" />
-                                    <ConfigField label="HYPERLIQUID WALLET" k="hyperliquid_wallet" />
-                                    <ConfigField label="HYPERLIQUID PRIVATE KEY" k="hyperliquid_private_key" />
-                                    <ConfigField label="ALPACA API KEY" k="alpaca_api_key" />
-                                    <ConfigField label="ALPACA API SECRET" k="alpaca_api_secret" />
+                                    {renderConfigField("MEXC API KEY", "mexc_api_key")}
+                                    {renderConfigField("MEXC SECRET", "mexc_api_secret")}
+                                    {renderConfigField("HYPERLIQUID WALLET", "hyperliquid_wallet")}
+                                    {renderConfigField("HYPERLIQUID PRIVATE KEY", "hyperliquid_private_key")}
+                                    {renderConfigField("ALPACA API KEY", "alpaca_api_key")}
+                                    {renderConfigField("ALPACA API SECRET", "alpaca_api_secret")}
                                 </div>
                             </div>
 
@@ -263,13 +440,13 @@ const AdminConsole: React.FC = () => {
                             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#a78bfa]/20 group-hover:bg-[#a78bfa]/50 transition-all duration-500" />
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-2">
-                                <ConfigField label="Misión del CEO" k="agent_ceo_mission" />
-                                <ConfigField label="Directiva Sentinel" k="agent_sentinel_mission" />
-                                <ConfigField label="Mandato de Riesgo" k="agent_risk_mission" />
-                                <ConfigField label="Objetivo Crypto Perp" k="agent_perp_mission" />
-                                <ConfigField label="Prioridad Meme Sniper" k="agent_sniper_mission" />
-                                <ConfigField label="Estrategia Equities" k="agent_equity_mission" />
-                                <ConfigField label="Enfoque Forex Macro" k="agent_forex_mission" />
+                                {renderConfigField("Misión del CEO", "agent_ceo_mission")}
+                                {renderConfigField("Directiva Sentinel", "agent_sentinel_mission")}
+                                {renderConfigField("Mandato de Riesgo", "agent_risk_mission")}
+                                {renderConfigField("Objetivo Crypto Perp", "agent_perp_mission")}
+                                {renderConfigField("Prioridad Meme Sniper", "agent_sniper_mission")}
+                                {renderConfigField("Estrategia Equities", "agent_equity_mission")}
+                                {renderConfigField("Enfoque Forex Macro", "agent_forex_mission")}
                             </div>
                         </div>
                     </div>

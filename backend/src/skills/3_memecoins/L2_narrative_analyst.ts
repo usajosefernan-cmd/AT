@@ -57,7 +57,7 @@ async function internalNarrativeEvaluation(alert: MemeSpikeAlert): Promise<Narra
     // Simulamos la detección del patrón basada en la historia de precios
     const isDipAndRip = alert.priceHistory[alert.priceHistory.length - 1] > alert.priceHistory[alert.priceHistory.length - 2];
     
-    if (isDipAndRip && alert.rvol > 6.0) {
+    if (isDipAndRip && alert.rvol > 2.0) {
         return {
             pump_phase: 'Parabólico',
             tactical_score: 85,

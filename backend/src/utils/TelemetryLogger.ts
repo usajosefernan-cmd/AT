@@ -1,7 +1,14 @@
 import { supabase } from './supabaseClient';
 
 export class TelemetryLogger {
+    private static callCount = 0;
+
+    static getTotalCalls(): number {
+        return this.callCount;
+    }
+
     static async logApiUsage(model: string, prompt_tokens: number, completion_tokens: number) {
+        this.callCount++;
         // Estimación de costes para Llama-3-8b y Llama-3-70b (Ajustable a tarifas oficiales de Groq)
         // Llama 3.1 8B: $0.05 / 1M input, $0.08 / 1M output
         // Llama 3.3 70B: $0.59 / 1M input, $0.79 / 1M output

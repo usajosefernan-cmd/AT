@@ -48,24 +48,46 @@ export class WebSocketManager extends EventEmitter {
 
     private reconnectDelay = 5000;
 
+    private mexcSymbols: Set<string> = new Set();
+    private alpacaSymbols: Set<string> = new Set();
+    private hyperliquidSymbols: Set<string> = new Set();
+
     // ═══════════════════════════════════════════
-    // 1. MEXC Public WebSocket (No API Key needed for public streams)
-    //    Docs: https://mexcdevelop.github.io/apidocs/spot_v3_en/#websocket-market-streams
+    // 1. MEXC Public WebSocket 
     // ═══════════════════════════════════════════
     public connectMEXC(symbols: string[] = ["BTCUSDT", "ETHUSDT"]) {
+        symbols.forEach(s => this.mexcSymbols.add(s));
+        
+        // If already open, just send new subscriptions
+        if (this.mexcWs && this.mexcWs.readyState === WebSocket.OPEN) {
+            const subscribeMsg = {
+                method: "SUBSCRIPTION",
+                params: symbols.flatMap(s => [
+                    `spot@public.deals.v3.api@${s}`,
+                    `spot@public.kline.v3.api@${s}@Min1`,
+                    `spot@public.kline.v3.api@${s}@Min15`,
+                ]),
+            };
+            this.mexcWs.send(JSON.stringify(subscribeMsg));
+            return;
+        }
+
+        // Clean previous socket to avoid leaks
+        if (this.mexcWs) this.mexcWs.close();
+
         const url = "wss://wbs.mexc.com/ws";
-        console.log(`[WSManager] Connecting to MEXC WSS: ${symbols.join(", ")}`);
+        console.log(`[WSManager] Connecting to MEXC WSS: ${Array.from(this.mexcSymbols).join(", ")}`);
 
         this.mexcWs = new WebSocket(url);
 
         this.mexcWs.on("open", () => {
             console.log("[WSManager] ✅ MEXC WSS CONNECTED (Real Market Data)");
-            broadcastAgentState("sentinel", "connected_mexc", symbols.join(", "), "success");
+            broadcastAgentState("sentinel", "connected_mexc", Array.from(this.mexcSymbols).join(", "), "success");
 
-            // Subscribe to trade + kline streams
+            // Subscribe to trade + kline streams for ALL known symbols
             const subscribeMsg = {
                 method: "SUBSCRIPTION",
-                params: symbols.flatMap(s => [
+                params: Array.from(this.mexcSymbols).flatMap(s => [
                     `spot@public.deals.v3.api@${s}`,
                     `spot@public.kline.v3.api@${s}@Min1`,
                     `spot@public.kline.v3.api@${s}@Min15`,
@@ -140,7 +162,7 @@ export class WebSocketManager extends EventEmitter {
             console.warn("[WSManager] ⚠️ MEXC WSS DISCONNECTED. Reconnecting...");
             clearInterval(pingInterval);
             broadcastAgentState("sentinel", "reconnecting", "MEXC", "error");
-            setTimeout(() => this.connectMEXC(symbols), this.reconnectDelay);
+            setTimeout(() => this.connectMEXC(Array.from(this.mexcSymbols)), this.reconnectDelay);
         });
 
         this.mexcWs.on("error", (err) => {
@@ -153,6 +175,8 @@ export class WebSocketManager extends EventEmitter {
     //    Docs: https://docs.alpaca.markets/docs/real-time-stock-pricing-data
     // ═══════════════════════════════════════════
     public connectAlpaca(symbols: string[] = ["AAPL", "TSLA", "SPY"]) {
+        symbols.forEach(s => this.alpacaSymbols.add(s));
+
         const apiKey = process.env.ALPACA_API_KEY;
         const apiSecret = process.env.ALPACA_API_SECRET;
 
@@ -161,8 +185,20 @@ export class WebSocketManager extends EventEmitter {
             return;
         }
 
+        // If open and authenticated, just subscribe to new symbols
+        if (this.alpacaWs && this.alpacaWs.readyState === WebSocket.OPEN) {
+            this.alpacaWs.send(JSON.stringify({
+                action: "subscribe",
+                trades: symbols,
+                bars: symbols,
+            }));
+            return;
+        }
+
+        if (this.alpacaWs) this.alpacaWs.close();
+
         const url = "wss://stream.data.alpaca.markets/v2/iex";
-        console.log(`[WSManager] Connecting to Alpaca WSS: ${symbols.join(", ")}`);
+        console.log(`[WSManager] Connecting to Alpaca WSS: ${Array.from(this.alpacaSymbols).join(", ")}`);
 
         this.alpacaWs = new WebSocket(url);
 
@@ -183,11 +219,11 @@ export class WebSocketManager extends EventEmitter {
                 for (const msg of messages) {
                     if (msg.T === "success" && msg.msg === "authenticated") {
                         console.log("[WSManager] ✅ Alpaca AUTHENTICATED.");
-                        broadcastAgentState("sentinel", "connected_alpaca", symbols.join(", "), "success");
+                        broadcastAgentState("sentinel", "connected_alpaca", Array.from(this.alpacaSymbols).join(", "), "success");
                         this.alpacaWs!.send(JSON.stringify({
                             action: "subscribe",
-                            trades: symbols,
-                            bars: symbols,
+                            trades: Array.from(this.alpacaSymbols),
+                            bars: Array.from(this.alpacaSymbols),
                         }));
                     }
 
@@ -228,7 +264,7 @@ export class WebSocketManager extends EventEmitter {
         this.alpacaWs.on("close", () => {
             console.warn("[WSManager] ⚠️ Alpaca WSS DISCONNECTED. Reconnecting...");
             broadcastAgentState("sentinel", "reconnecting", "Alpaca", "error");
-            setTimeout(() => this.connectAlpaca(symbols), this.reconnectDelay);
+            setTimeout(() => this.connectAlpaca(Array.from(this.alpacaSymbols)), this.reconnectDelay);
         });
 
         this.alpacaWs.on("error", (err) => {
@@ -241,29 +277,41 @@ export class WebSocketManager extends EventEmitter {
     //    Docs: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket
     // ═══════════════════════════════════════════
     public connectHyperliquid(symbols: string[] = ["BTC", "ETH"]) {
+        symbols.forEach(s => this.hyperliquidSymbols.add(s));
+
+        // If already connected, just send subscriptions
+        if (this.hyperliquidWs && this.hyperliquidWs.readyState === WebSocket.OPEN) {
+            for (const symbol of symbols) {
+                this.hyperliquidWs.send(JSON.stringify({ method: "subscribe", subscription: { type: "trades", coin: symbol } }));
+                this.hyperliquidWs.send(JSON.stringify({ method: "subscribe", subscription: { type: "l2Book", coin: symbol } }));
+                this.hyperliquidWs.send(JSON.stringify({ method: "subscribe", subscription: { type: "candle", coin: symbol, interval: "1m" } }));
+            }
+            return;
+        }
+
+        if (this.hyperliquidWs) this.hyperliquidWs.close();
+
         const url = "wss://api.hyperliquid.xyz/ws";
-        console.log(`[WSManager] Connecting to Hyperliquid WSS: ${symbols.join(", ")}`);
+        console.log(`[WSManager] Connecting to Hyperliquid WSS: ${Array.from(this.hyperliquidSymbols).join(", ")}`);
 
         this.hyperliquidWs = new WebSocket(url);
 
         this.hyperliquidWs.on("open", () => {
             console.log("[WSManager] ✅ Hyperliquid WSS CONNECTED");
-            broadcastAgentState("sentinel", "connected_hyperliquid", symbols.join(", "), "success");
+            broadcastAgentState("sentinel", "connected_hyperliquid", Array.from(this.hyperliquidSymbols).join(", "), "success");
 
-            // Subscribe to trades for each symbol
-            for (const symbol of symbols) {
+            // Subscribe to all tracked symbols
+            for (const symbol of Array.from(this.hyperliquidSymbols)) {
                 this.hyperliquidWs!.send(JSON.stringify({
                     method: "subscribe",
                     subscription: { type: "trades", coin: symbol },
                 }));
 
-                // Subscribe to L2 book for spread/depth data
                 this.hyperliquidWs!.send(JSON.stringify({
                     method: "subscribe",
                     subscription: { type: "l2Book", coin: symbol },
                 }));
 
-                // Subscribe to 1m candles for the chart
                 this.hyperliquidWs!.send(JSON.stringify({
                     method: "subscribe",
                     subscription: { type: "candle", coin: symbol, interval: "1m" },
@@ -338,7 +386,7 @@ export class WebSocketManager extends EventEmitter {
         this.hyperliquidWs.on("close", () => {
             console.warn("[WSManager] ⚠️ Hyperliquid WSS DISCONNECTED. Reconnecting...");
             broadcastAgentState("sentinel", "reconnecting", "Hyperliquid", "error");
-            setTimeout(() => this.connectHyperliquid(symbols), this.reconnectDelay);
+            setTimeout(() => this.connectHyperliquid(Array.from(this.hyperliquidSymbols)), this.reconnectDelay);
         });
 
         this.hyperliquidWs.on("error", (err) => {

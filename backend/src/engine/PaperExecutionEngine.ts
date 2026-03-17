@@ -80,6 +80,33 @@ export class PaperExecutionEngine extends EventEmitter {
     }
 
     /**
+     * Hot-reload config from AdminConsole.
+     * Called by AILoop.reloadRiskConfig when the operator changes risk params.
+     */
+    public updateConfig(key: string, value: any) {
+        const num = parseFloat(value);
+        if (isNaN(num)) return;
+
+        if (key === "risk_max_daily_dd_pct") {
+            this.maxDailyDrawdownPct = num;
+            console.log(`[PaperEngine] ✅ maxDailyDrawdownPct → ${num}%`);
+        }
+        if (key === "risk_max_total_dd_pct") {
+            this.maxTotalDrawdownPct = num;
+            console.log(`[PaperEngine] ✅ maxTotalDrawdownPct → ${num}%`);
+        }
+    }
+
+    /**
+     * Reiniciar el saldo diario (para que el DD diario se calcule desde aquellos niveles).
+     * Callable desde la consola o al inicio de un nuevo día de trading.
+     */
+    public resetDailyDrawdown() {
+        this.account.dailyStartBalance = this.account.balance;
+        console.log(`[PaperEngine] Daily drawdown reset. New daily start: $${this.account.balance.toFixed(2)}`);
+    }
+
+    /**
      * Alimentar con cada tick real del WebSocketManager.
      * Actualiza el PnL irrealizado de todas las posiciones abiertas
      * y verifica SL/TP en tiempo real.
@@ -159,7 +186,9 @@ export class PaperExecutionEngine extends EventEmitter {
         }
 
         // Pre-check: ¿drawdown permite operar?
-        if (this.isDailyDrawdownBreached()) {
+        const ddPct = this.getDailyDrawdownPct();
+        console.log(`[PaperEngine] DD Check: daily=${ddPct.toFixed(2)}% / limit=${this.maxDailyDrawdownPct}% | startBal=$${this.account.dailyStartBalance} equity=$${this.getEquity().toFixed(2)}`);
+        if (ddPct > 0 && ddPct >= this.maxDailyDrawdownPct) {
             console.warn("[PaperEngine] REJECTED: Daily drawdown limit reached.");
             broadcastAgentState("risk", "order_rejected", "DD Limit Breached", "error");
             return null;
@@ -331,7 +360,7 @@ export class PaperExecutionEngine extends EventEmitter {
         }
     }
 
-    private emitAccountUpdate() {
+    public emitAccountUpdate() {
         this.emit("account_update", {
             balance: this.account.balance,
             equity: this.getEquity(),

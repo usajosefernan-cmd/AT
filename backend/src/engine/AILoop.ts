@@ -273,6 +273,8 @@ export class AILoop {
         broadcastAgentLog("risk", `⚙️ Config actualizada: ${key} = ${JSON.stringify(value)}`, "warn");
         // Forward to the risk manager for live update
         (this.riskManager as any).updateConfig?.(key, value);
+        // Forward to PaperEngine to update DD limits
+        this.paperEngine.updateConfig(key, value);
         console.log(`[AILoop] Risk config reloaded: ${key} = ${JSON.stringify(value)}`);
     }
 }

@@ -231,40 +231,48 @@ export class OfficeState {
 
     // Try preferred seat first, then any free seat
     let seatId: string | null = null;
-    if (preferredSeatId && this.seats.has(preferredSeatId)) {
-      const seat = this.seats.get(preferredSeatId)!;
-      if (!seat.assigned) {
-        seatId = preferredSeatId;
-      }
-    }
-    if (!seatId) {
-      seatId = this.findFreeSeat();
-    }
+
+    // --- SYSTEM AGENTS (IDs 1-6): always use hardcoded desk positions ---
+    // This prevents findFreeSeat() from assigning them lounge sofas.
+    const safeFallbacks: Record<number, {col: number, row: number}> = {
+        1: {col: 4, row: 6},   // CEO — top-left desk
+        2: {col: 6, row: 6},   // L3 Crypto — top-right desk
+        3: {col: 4, row: 8},   // L3 Memes — middle-left desk
+        4: {col: 6, row: 8},   // L3 Equities — middle-right desk
+        5: {col: 3, row: 10},  // L3 SmallCaps — bottom-left desk
+        6: {col: 7, row: 10}   // L3 Forex — bottom-right desk
+    };
 
     let ch: Character;
-    if (seatId) {
-      const seat = this.seats.get(seatId)!;
-      seat.assigned = true;
-      ch = createCharacter(id, palette, seatId, seat, hueShift);
-    } else {
-      // Safe fallback desk positions to prevent agents from clustering 
-      // when layout metadata races against agentCreation events.
-      const safeFallbacks: Record<number, {col: number, row: number}> = {
-          1: {col: 4, row: 4},   // CEO Office (Top Left mostly)
-          2: {col: 8, row: 10},  // L3 Crypto
-          3: {col: 12, row: 10}, // L3 Memes
-          4: {col: 16, row: 10}, // L3 Equities
-          5: {col: 8, row: 14},  // L3 SmallCaps
-          6: {col: 12, row: 14}  // L3 Forex
-      };
-      
-      const spawn = safeFallbacks[id] || { col: 1, row: 1 };
-      
+    if (id in safeFallbacks) {
+      // System agents: forced desktop positions
+      const spawn = safeFallbacks[id];
       ch = createCharacter(id, palette, null, null, hueShift);
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2;
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2;
       ch.tileCol = spawn.col;
       ch.tileRow = spawn.row;
+    } else {
+      // Dynamic agents (7+): use layout seats
+      if (preferredSeatId && this.seats.has(preferredSeatId)) {
+        const seat = this.seats.get(preferredSeatId)!;
+        if (!seat.assigned) {
+          seatId = preferredSeatId;
+        }
+      }
+      if (!seatId) {
+        seatId = this.findFreeSeat();
+      }
+
+      if (seatId) {
+        const seat = this.seats.get(seatId)!;
+        seat.assigned = true;
+        ch = createCharacter(id, palette, seatId, seat, hueShift);
+      } else {
+        ch = createCharacter(id, palette, null, null, hueShift);
+        ch.x = (3 + (id % 5) * 2) * TILE_SIZE + TILE_SIZE / 2;
+        ch.y = (3 + Math.floor(id / 5) * 2) * TILE_SIZE + TILE_SIZE / 2;
+      }
     }
 
     if (folderName) {

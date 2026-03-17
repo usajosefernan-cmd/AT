@@ -197,24 +197,24 @@ export class RiskManagerAgent {
         }
         console.log(`[RiskManager] ✅ Filter 5: Order size OK`);
 
-        // ─── Filter 6: Max position size (20% equity) ───
+        // ─── Filter 6: Max position size (configurable % equity) ───
         const equityPct = (signal.notional_usd / equity) * 100;
-        if (equityPct > 20) {
+        if (equityPct > AXI_SELECT_RULES.maxPositionPct) {
             const result = hardReject(
-                `Posición $${signal.notional_usd} = ${equityPct.toFixed(1)}% del equity. Máximo 20%. Reduce el notional_usd.`,
+                `Posición $${signal.notional_usd} = ${equityPct.toFixed(1)}% del equity. Máximo ${AXI_SELECT_RULES.maxPositionPct}%. Reduce el notional_usd.`,
                 "POSITION_SIZE_TOO_LARGE", true
             );
-            console.log(`[RiskManager] ❌ FILTER 6 FAILED: ${equityPct.toFixed(1)}% > 20%`);
+            console.log(`[RiskManager] ❌ FILTER 6 FAILED: ${equityPct.toFixed(1)}% > ${AXI_SELECT_RULES.maxPositionPct}%`);
             return result;
         }
-        console.log(`[RiskManager] ✅ Filter 6: Position size OK (${equityPct.toFixed(1)}%)`);
+        console.log(`[RiskManager] ✅ Filter 6: Position size OK (${equityPct.toFixed(1)}% < ${AXI_SELECT_RULES.maxPositionPct}%)`);
 
-        // ─── Filter 7: Max risk per trade (5% equity) ───
-        const maxRiskUsd = equity * 0.05;
+        // ─── Filter 7: Max risk per trade (configurable % equity) ───
+        const maxRiskUsd = equity * (AXI_SELECT_RULES.maxRiskPerTradePct / 100);
         const tradeRiskUsd = signal.notional_usd * (signal.stop_loss_pct / 100);
         if (tradeRiskUsd > maxRiskUsd) {
             const result = hardReject(
-                `Trade risk $${tradeRiskUsd.toFixed(2)} > 5% equity ($${maxRiskUsd.toFixed(2)}). Reduce el stop_loss_pct o el tamaño de la posición.`,
+                `Trade risk $${tradeRiskUsd.toFixed(2)} > ${AXI_SELECT_RULES.maxRiskPerTradePct}% equity ($${maxRiskUsd.toFixed(2)}). Reduce el stop_loss_pct o el tamaño de la posición.`,
                 "MAX_RISK_EXCEEDED", true
             );
             console.log(`[RiskManager] ❌ FILTER 7 FAILED: Risk $${tradeRiskUsd.toFixed(2)} > $${maxRiskUsd.toFixed(2)}`);

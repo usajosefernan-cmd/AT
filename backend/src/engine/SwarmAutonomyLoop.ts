@@ -22,12 +22,18 @@ import { FirehoseManager } from '../data_feeds/FirehoseManager';
 import { MarketDataCache } from '../data_feeds/MarketDataCache';
 import { ProfileParser } from '../agents/ProfileParser';
 import { askGroq } from '../ai/LLMService';
+import { PaperExecutionEngine } from './PaperExecutionEngine';
 
 export class SwarmAutonomyLoop {
     private static isRunning = false;
     private static firehose: FirehoseManager | null = null;
     private static heartbeatInterval: NodeJS.Timeout | null = null;
     private static scanCount = 0;
+    private static paperEngine: PaperExecutionEngine | null = null;
+
+    static setPaperEngine(engine: PaperExecutionEngine) {
+        this.paperEngine = engine;
+    }
 
     static getScanCount() {
         return this.scanCount;
@@ -64,21 +70,36 @@ export class SwarmAutonomyLoop {
                 turnover_ratio: (data.volume * data.close) / 1000000 
             };
 
+            const io = (global as any).io;
             const l1Res = JSON.parse(executeMemeL1Screener(asset, realMemeData));
             if (l1Res.status === "MEME_MOMENTUM_SPIKE") {
                 console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 3 (Memecoins) para ${asset} tras tick de MEXC.\x1b[0m`);
-                (global as any).io?.emit('swarm_alert', { ecosystem: '3_memecoins', asset, type: 'L1_SPIKE' });
+                io?.emit('swarm_alert', { ecosystem: '3_memecoins', asset, type: 'L1_SPIKE' });
+                io?.emit('agent_state', { agent_id: 'l3_memes', status: 'active', action: `🐸 L1 SPIKE ${asset} — Analizando narrativa...` });
                 
                 const anomalyStr = JSON.stringify(l1Res.data);
                 const l2ResStr = await executeMemeL2Analyst(anomalyStr);
                 const l2Res = JSON.parse(l2ResStr);
                 
                 if (l2Res.evaluation && l2Res.evaluation.tactical_score >= 50) {
+                    io?.emit('agent_state', { agent_id: 'l3_memes', status: 'active', action: `🐸 L2 APROBADO (${l2Res.evaluation.tactical_score}pts) — Evaluando riesgo...` });
                     const l3ResStr = await executeMemeL3Risk(JSON.stringify(l2Res.evaluation), anomalyStr);
                     const l3Res = JSON.parse(l3ResStr);
                     if (l3Res.decision?.approved) {
-                        (global as any).io?.emit('trade_executed', { ecosystem: '3_memecoins', asset, decision: l3Res.decision });
+                        io?.emit('agent_state', { agent_id: 'l3_memes', status: 'success', action: `🎯 EJECUTANDO ${asset} — ${l3Res.decision.rationale?.substring(0, 50)}` });
+                        io?.emit('trade_executed', { ecosystem: '3_memecoins', asset, decision: l3Res.decision });
+                        // EJECUTAR EN PAPER ENGINE
+                        this.paperEngine?.openPosition({
+                            symbol: asset, exchange: 'MEXC', side: 'LONG',
+                            entryPrice: data.close, notionalValue: Math.min(l3Res.decision.size_usd || 100, 500),
+                            stopLoss: l3Res.decision.stop_loss, takeProfit: l3Res.decision.take_profit,
+                            rationale: l3Res.decision.rationale, openedBy: 'L3_Memecoins'
+                        });
+                    } else {
+                        io?.emit('agent_state', { agent_id: 'l3_memes', status: 'idle', action: `❌ L3 VETÓ ${asset}: ${l3Res.decision?.rationale?.substring(0, 50)}` });
                     }
+                } else {
+                    io?.emit('agent_state', { agent_id: 'l3_memes', status: 'idle', action: `😴 L2 rechazó ${asset} (score ${l2Res.evaluation?.tactical_score || 0})` });
                 }
             }
         });
@@ -154,21 +175,46 @@ export class SwarmAutonomyLoop {
                 open_interest_delta: 3.5 
             };
 
+            const io = (global as any).io;
             const l1Res = JSON.parse(executeCryptoL1Screener(asset, realFlowData));
             if (l1Res.status === "CRYPTO_FLOW_ANOMALY") {
                 console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 2 (Cripto Majors) para ${asset} tras tick de Hyperliquid.\x1b[0m`);
-                (global as any).io?.emit('swarm_alert', { ecosystem: '2_crypto_majors', asset, type: 'L1_FLOW' });
+                io?.emit('swarm_alert', { ecosystem: '2_crypto_majors', asset, type: 'L1_FLOW' });
+                io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'active', action: `₿ L1 FLOW ${asset} — Analizando orderbook...` });
                 
+                try {
                 const flowStr = JSON.stringify(l1Res.data);
                 const l2ResStr = await executeCryptoL2Analyst(flowStr);
                 const l2Res = JSON.parse(l2ResStr);
+                const l2Score = l2Res.evaluation?.tactical_score || 0;
+                console.log(`\x1b[36m[Swarm L2]\x1b[0m ${asset}: Score=${l2Score} ${l2Score >= 50 ? '✅ PASA' : '❌ NO PASA'}`);
                 
-                if (l2Res.evaluation && l2Res.evaluation.tactical_score >= 50) {
+                if (l2Res.evaluation && l2Score >= 50) {
+                    io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'active', action: `₿ L2 APROBADO (${l2Score}pts) — Evaluando riesgo...` });
+                    console.log(`\x1b[33m[Swarm L3]\x1b[0m ${asset}: Llamando L3 Risk Manager...`);
                     const l3ResStr = await executeCryptoL3RiskManager(JSON.stringify(l2Res.evaluation), flowStr);
                     const l3Res = JSON.parse(l3ResStr);
+                    console.log(`\x1b[33m[Swarm L3]\x1b[0m ${asset}: approved=${l3Res.decision?.approved} rationale=${l3Res.decision?.rationale?.substring(0, 80)}`);
                     if (l3Res.decision?.approved) {
-                        (global as any).io?.emit('trade_executed', { ecosystem: '2_crypto_majors', asset, decision: l3Res.decision });
+                        const price = parseFloat(data.trades[0]?.px) || 0;
+                        io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'success', action: `🎯 EJECUTANDO ${asset} @ $${price.toFixed(0)}` });
+                        io?.emit('trade_executed', { ecosystem: '2_crypto_majors', asset, decision: l3Res.decision });
+                        console.log(`\x1b[42m\x1b[30m [TRADE] ✅ ABRIENDO ${asset} @ $${price} \x1b[0m`);
+                        this.paperEngine?.openPosition({
+                            symbol: asset, exchange: 'Hyperliquid', side: 'LONG',
+                            entryPrice: price, notionalValue: Math.min(l3Res.decision.size_usd || 200, 1000),
+                            stopLoss: l3Res.decision.stop_loss, takeProfit: l3Res.decision.take_profit,
+                            rationale: l3Res.decision.rationale, openedBy: 'L3_Crypto_Majors'
+                        });
+                    } else {
+                        io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'idle', action: `❌ L3 VETÓ ${asset}: ${l3Res.decision?.rationale?.substring(0, 50)}` });
                     }
+                } else {
+                    io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'idle', action: `😴 L2 rechazó ${asset} (score ${l2Score})` });
+                }
+                } catch (pipeErr: any) {
+                    console.error(`\x1b[31m[Swarm] ❌ Pipeline error ${asset}:\x1b[0m`, pipeErr.message);
+                    io?.emit('agent_state', { agent_id: 'l3_crypto', status: 'error', action: `❌ Error: ${pipeErr.message?.substring(0, 50)}` });
                 }
             }
         });
@@ -204,24 +250,63 @@ export class SwarmAutonomyLoop {
         this.scanCount++;
 
         const marketState = JSON.stringify(MarketDataCache.getSnapshot());
+        const io = (global as any).io;
 
-        // Ejemplo: Despertar al Director Crypto Majors
-        try {
-            const cryptoProfile = ProfileParser.getProfile("L3_Crypto_Majors");
-            const context = `El mercado actual (Volumes/Prices): ${marketState}\n\n¿Hay alguna oportunidad inmediata que requiera acción proactiva? Responde con un JSON breve { "action": "WAIT" | "TRADE", "reason": string }`;
-            
-            // Usamos modelo rápido para el heartbeat (llama-8b o similar si tuvieramos, pero versatile es rápido)
-            const { data } = await askGroq<string>(cryptoProfile, context, { jsonMode: true });
-            
-            const decision = JSON.parse(data || '{}');
-            if (decision.action === 'TRADE') {
-                console.log(`\x1b[35m[L3 Crypto Majors PROACTIVO]\x1b[0m Decidió ejecutar un trade por latido! Razón: ${decision.reason}`);
-                // Aquí el motor ejecutaría la orden real usando PaperExecutionEngine
-            } else {
-                console.log(`\x1b[90m[L3 Crypto Majors] Skipping heartbeat. Razón: ${decision.reason}\x1b[0m`);
+        // Definición de los 5 Directores L3 con sus perfiles y mercados
+        const directors = [
+            { agent_id: 'l3_crypto',     profile: 'L3_Crypto_Majors', market: 'Crypto Perpetuals', emoji: '₿' },
+            { agent_id: 'l3_memes',      profile: 'L3_Memecoins',     market: 'Memecoins Spot',    emoji: '🐸' },
+            { agent_id: 'l3_equities',   profile: 'L3_Equities',      market: 'Equities US',       emoji: '📈' },
+            { agent_id: 'l3_small_caps', profile: 'L3_Small_Caps',    market: 'Small/Micro Caps',  emoji: '🔬' },
+            { agent_id: 'l3_forex',      profile: 'L3_Axi_Forex',     market: 'Forex Majors',      emoji: '💱' },
+        ];
+
+        // CEO observa mientras los directores trabajan
+        io?.emit('agent_state', { agent_id: 'ceo', status: 'active', action: '👔 Supervisando Heartbeat #' + this.scanCount });
+
+        for (const dir of directors) {
+            try {
+                // 1. Notificar al frontend que ESTE director está escaneando
+                io?.emit('agent_state', {
+                    agent_id: dir.agent_id,
+                    status: 'active',
+                    action: `${dir.emoji} Escaneando ${dir.market}...`
+                });
+
+                const profile = ProfileParser.getProfile(dir.profile);
+                const context = `Mercado ${dir.market} — snapshot resumen: ${typeof marketState === 'string' ? marketState.substring(0, 500) : 'N/A'}\n\n¿Hay oportunidad inmediata? Responde JSON: { "action": "WAIT" | "TRADE", "reason": "..." }`;
+                
+                const { data } = await askGroq<any>(profile, context, { jsonMode: true });
+                const decision = typeof data === 'string' ? JSON.parse(data) : (data || { action: 'WAIT', reason: 'Sin datos' });
+
+                if (decision.action === 'TRADE') {
+                    // 2a. Director quiere operar → lo notificamos al frontend
+                    console.log(`\x1b[35m[${dir.profile} PROACTIVO]\x1b[0m Trade propuesto! Razón: ${decision.reason}`);
+                    io?.emit('agent_state', {
+                        agent_id: dir.agent_id,
+                        status: 'success',
+                        action: `🎯 TRADE: ${decision.reason?.substring(0, 60) || 'Oportunidad detectada'}`
+                    });
+                } else {
+                    // 2b. Director espera → idle con razón
+                    console.log(`\x1b[90m[${dir.profile}] Skipping. Razón: ${decision.reason}\x1b[0m`);
+                    io?.emit('agent_state', {
+                        agent_id: dir.agent_id,
+                        status: 'idle',
+                        action: `😴 ${decision.reason?.substring(0, 50) || 'Sin oportunidades'}`
+                    });
+                }
+            } catch (e: any) {
+                console.error(`[Heartbeat Error - ${dir.profile}] ${e.message}`);
+                io?.emit('agent_state', {
+                    agent_id: dir.agent_id,
+                    status: 'idle',
+                    action: `⚠️ Error: ${e.message?.substring(0, 40)}`
+                });
             }
-        } catch (e: any) {
-            console.error(`[Heartbeat Error] ${e.message}`);
         }
+
+        // CEO termina de supervisar
+        io?.emit('agent_state', { agent_id: 'ceo', status: 'idle', action: '✅ Heartbeat #' + this.scanCount + ' completado' });
     }
 }
