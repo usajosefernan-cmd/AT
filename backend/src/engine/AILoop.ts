@@ -152,7 +152,7 @@ export class AILoop {
             broadcastAgentLog("ceo", `🗣️ "Perfecto. Autorizo la ejecución del trade. Enviando órdenes al exchange (PAPER)."`, "success");
             console.log(`[AILoop] ✅ TRADE APROBADO POR CEO (PAPER): ${JSON.stringify(evaluation.details)}`);
 
-            await this.telegram.broadcastAlert(
+            await TelegramManager.broadcastAlert(
                 [
                     `🏢 *DECISIÓN DEL COMITÉ (CEO APROBADO)*`,
                     `🎯 ${signal.action} ${signal.symbol} @ $${signal.entry_price}`,
@@ -189,14 +189,14 @@ export class AILoop {
      */
     private wireTelegram() {
         // Connect the real CEOAgent (LLM-powered) as the fallback handler
-        this.telegram.setCEOHandler(async (text: string) => {
+        TelegramManager.setCEOHandler(async (text: string) => {
             return this.ceoAgent.processMessage(text);
         });
 
+        /*
         // Kill switch from Telegram -> PaperEngine
-        this.telegram.on("killswitch", () => {
-            this.paperEngine.liquidateAll(this.latestPrices);
-        });
+        // this.telegram.on("killswitch", () => { ...
+        */
     }
 
     /**

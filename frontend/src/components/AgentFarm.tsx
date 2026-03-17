@@ -70,10 +70,9 @@ const PixelSpecialist = ({ active, color, id }: { active: boolean, color: string
 );
 
 const AgentCard = ({ agent, selected, onClick }: any) => {
+    if (!agent) return null;
     let Avatar = PixelSpecialist;
     if (agent.id === 'ceo') Avatar = PixelCEO as any;
-    if (agent.id === 'sentinel') Avatar = PixelSentinel as any;
-    if (agent.id === 'risk_manager') Avatar = PixelRisk as any;
 
     const isActive = agent.status === 'active' || agent.status === 'success';
 
@@ -140,9 +139,7 @@ const AgentInspector = ({ agent, logs }: { agent: AgentState, logs: AgentLog[] }
                 <div className="flex items-center gap-5">
                     <div className={`w-20 h-20 rounded-2xl bg-[#060a10] border-2 border-[#1a1f2e] flex items-center justify-center p-2 relative overflow-hidden group`}>
                         <div className="absolute inset-0 bg-gradient-to-br from-[#4a6cf7]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        {agent.id === 'sentinel' ? <PixelSentinel active /> : 
-                         agent.id === 'risk_manager' ? <PixelRisk active /> : 
-                         agent.id === 'ceo' ? <PixelCEO active /> : 
+                        {agent.id === 'ceo' ? <PixelCEO active /> : 
                          <PixelSpecialist active color={agent.color || "#4a6cf7"} id={agent.id} />}
                     </div>
                     <div className="flex-1">
@@ -252,9 +249,7 @@ const AgentFarm: React.FC = () => {
 
     const hierarchy = {
         ceo: agents['ceo'],
-        risk: agents['risk_manager'],
-        intel: agents['sentinel'],
-        specialists: Object.entries(agents).filter(([id]) => !['ceo', 'risk_manager', 'sentinel'].includes(id)).map(([_, a]) => a)
+        directors: Object.entries(agents).filter(([id]) => id !== 'ceo').map(([_, a]) => a)
     };
 
     const selectedAgent = selectedId ? agents[selectedId] : null;
@@ -274,7 +269,7 @@ const AgentFarm: React.FC = () => {
                         
                         {/* 1. ECHELON: LEADERSHIP */}
                         <div className="mb-20 text-center flex flex-col items-center relative">
-                            <div className="px-6 py-2 rounded-full border border-[#4a6cf7]/20 bg-[#4a6cf7]/5 text-[10px] font-black text-[#4a6cf7] uppercase tracking-[0.5em] mb-10 shadow-[0_0_20px_rgba(74,108,247,0.1)]">Eslabón de Mando</div>
+                            <div className="px-6 py-2 rounded-full border border-[#4a6cf7]/20 bg-[#4a6cf7]/5 text-[10px] font-black text-[#4a6cf7] uppercase tracking-[0.5em] mb-10 shadow-[0_0_20px_rgba(74,108,247,0.1)]">Dirección General (Tier 1)</div>
                             {hierarchy.ceo && (
                                 <AgentCard 
                                     agent={hierarchy.ceo} 
@@ -283,42 +278,15 @@ const AgentFarm: React.FC = () => {
                                 />
                             )}
                             {/* Connector Lines */}
-                            <div className="absolute top-[160px] w-0.5 h-16 bg-gradient-to-b from-[#4a6cf7] to-transparent" />
+                            <div className="absolute top-[160px] w-0.5 h-16 bg-gradient-to-b from-[#4a6cf7] to-[#f59e0b]" />
                         </div>
 
-                        {/* 2. ECHELON: CORE OPERATIONS */}
-                        <div className="mb-20 w-full flex flex-col items-center relative">
-                            <div className="px-6 py-2 rounded-full border border-[#22c55e]/20 bg-[#22c55e]/5 text-[10px] font-black text-[#22c55e] uppercase tracking-[0.5em] mb-10">Núcleo de Infraestructura</div>
+                        {/* 2. ECHELON: DIRECTORS */}
+                        <div className="w-full flex flex-col items-center mt-10">
+                            <div className="px-6 py-2 rounded-full border border-[#f59e0b]/20 bg-[#f59e0b]/5 text-[10px] font-black text-[#f59e0b] uppercase tracking-[0.5em] mb-10">Directores de Ecosistema (Tier 3)</div>
                             
-                            <div className="flex justify-center gap-20 w-full relative">
-                                {/* Horizontal connector */}
-                                <div className="absolute top-[40px] left-[25%] right-[25%] h-0.5 bg-gradient-to-r from-transparent via-[#1a1f2e] to-transparent" />
-                                
-                                {hierarchy.risk && (
-                                    <AgentCard 
-                                        agent={hierarchy.risk} 
-                                        selected={selectedId === 'risk_manager'} 
-                                        onClick={() => setSelectedId('risk_manager')}
-                                    />
-                                )}
-                                {hierarchy.intel && (
-                                    <AgentCard 
-                                        agent={hierarchy.intel} 
-                                        selected={selectedId === 'sentinel'} 
-                                        onClick={() => setSelectedId('sentinel')}
-                                    />
-                                )}
-                            </div>
-                            {/* Connector Line to specialists */}
-                            <div className="mt-16 w-0.5 h-16 bg-gradient-to-b from-[#1a1f2e] to-transparent" />
-                        </div>
-
-                        {/* 3. ECHELON: TACTICAL SPECIALISTS */}
-                        <div className="w-full flex flex-col items-center">
-                            <div className="px-6 py-2 rounded-full border border-[#f59e0b]/20 bg-[#f59e0b]/5 text-[10px] font-black text-[#f59e0b] uppercase tracking-[0.5em] mb-10">Fuerza Táctica de Ejecución</div>
-                            
-                            <div className="flex flex-wrap justify-center gap-10">
-                                {hierarchy.specialists.map(agent => (
+                            <div className="flex flex-wrap justify-center gap-10 max-w-[800px]">
+                                {hierarchy.directors.map(agent => (
                                     <AgentCard 
                                         key={agent.id} 
                                         agent={agent} 
@@ -326,9 +294,9 @@ const AgentFarm: React.FC = () => {
                                         onClick={() => setSelectedId(agent.id)}
                                     />
                                 ))}
-                                {hierarchy.specialists.length === 0 && (
+                                {hierarchy.directors.length === 0 && (
                                     <div className="p-10 text-center border-2 border-dashed border-[#1a1f2e] rounded-3xl opacity-20">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-[#5a6577]">Esperando Despliegue de Especialistas...</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-[#5a6577]">Alineando Directores...</p>
                                     </div>
                                 )}
                             </div>

@@ -10,13 +10,15 @@
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.49.0",
+        "date-fns": "^4.1.0",
+        "framer-motion": "^12.37.0",
         "lightweight-charts": "^4.2.1",
         "lucide-react": "^0.577.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "react-router-dom": "^7.13.1",
-        "socket.io-client": "^4.8.1",
-        "zustand": "^5.0.2"
+        "socket.io-client": "^4.8.3",
+        "zustand": "^5.0.12"
     },
     "devDependencies": {
         "@types/react": "^19.0.0",

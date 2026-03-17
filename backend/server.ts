@@ -95,7 +95,8 @@ const paperEngine = new PaperExecutionEngine(
 // ═══════════════════════════════════════════
 // 5. Telegram Bot
 // ═══════════════════════════════════════════
-const telegram = new TelegramManager();
+// 2. Instantiate Telegram (static init happens later)
+// const telegram = new TelegramManager(); // REMOVED - it's static now
 
 // Precio en vivo compartido entre todos los módulos
 const latestPrices: Record<string, number> = {};
@@ -104,7 +105,8 @@ const latestPrices: Record<string, number> = {};
 // 6. AI Loop — EL CEREBRO
 //    Conecta: WSS → Sentinel(Groq) → Risk(Claude) → Execute → Supabase
 // ═══════════════════════════════════════════
-const aiLoop = new AILoop(paperEngine, telegram, latestPrices);
+// 3. Initiate AI Evaluation Loop
+const aiLoop = new AILoop(paperEngine, TelegramManager, latestPrices);
 
 // ═══════════════════════════════════════════
 // 6b. SWARM ORCHESTRATOR — Especialistas multi-mercado
@@ -117,7 +119,7 @@ const marketScanner = new MarketScannerLoop(
     aiLoop.sentinel,
     aiLoop.riskManager,
     paperEngine,
-    telegram,
+    TelegramManager, // Changed from telegram to TelegramManager
     latestPrices
 );
 
@@ -135,6 +137,9 @@ function startSwarm() {
 
     // Iniciar el Scanner Proactivo (cada 5s internamente)
     marketScanner.start();
+
+    // Iniciar listeners de WebSockets externos + Telegram
+    TelegramManager.init(process.env.TELEGRAM_BOT_TOKEN || "");
 }
 function stopSwarm() {
     if (swarmInterval) clearInterval(swarmInterval);
@@ -184,7 +189,7 @@ paperEngine.on("position_closed", async (pos) => {
     io.emit("paper_position_closed", pos);
     await savePaperPosition(pos);
     const emoji = pos.realizedPnl >= 0 ? "🟢" : "🔴";
-    telegram.broadcastAlert(
+    TelegramManager.broadcastAlert(
         `${emoji} * Posición Cerrada *\n${pos.symbol} ${pos.side} \nPnL: $${pos.realizedPnl.toFixed(2)} \nRazón: ${pos.status} `
     );
 });
@@ -197,7 +202,7 @@ paperEngine.on("account_update", async (snapshot) => {
 paperEngine.on("drawdown_alert", (alert) => {
     io.emit("paper_drawdown_alert", alert);
     broadcastAgentState("risk", "drawdown_warning", `${alert.type}: ${alert.current.toFixed(2)}% `, "error");
-    telegram.broadcastAlert(
+    TelegramManager.broadcastAlert(
         `⚠️ * DRAWDOWN *\n${alert.type}: ${alert.current.toFixed(2)}% / ${alert.limit}%`
     );
 });
@@ -232,7 +237,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 app.post("/api/killswitch", (_req, res) => {
     paperEngine.liquidateAll(latestPrices);
     broadcastAgentState("ceo", "killswitch_activated", "ALL HALTED", "error");
-    telegram.broadcastAlert("🛑 *KILL SWITCH* desde Dashboard.");
+    TelegramManager.broadcastAlert("🛑 *KILL SWITCH* desde Dashboard.");
     res.json({ success: true });
 });
 
@@ -462,9 +467,6 @@ server.listen(PORT, "0.0.0.0", () => {
     const stockSymbols = (process.env.STOCK_SYMBOLS || "AAPL,TSLA,SPY").split(",");
     wsManager.connectAlpaca(stockSymbols);
 
-    // Telegram
-    telegram.start();
-
     // 🤖 START AUTONOMOUS SWARM ORCHESTRATOR
     startSwarm();
 
@@ -483,6 +485,5 @@ server.listen(PORT, "0.0.0.0", () => {
 process.on("SIGTERM", () => {
     stopSwarm();
     wsManager.disconnectAll();
-    telegram.stop();
     server.close();
 });

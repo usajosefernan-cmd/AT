@@ -184,7 +184,7 @@ export const MarketContext: React.FC = () => {
 
     // Update with real-time candles from WebSocket
     useEffect(() => {
-        if (!latestCandle || !candlestickSeriesRef.current || !volumeSeriesRef.current) return;
+        if (!latestCandle || !candlestickSeriesRef.current || !volumeSeriesRef.current || history.length === 0) return;
 
         // Ensure the candle belongs to the active symbol
         if (latestCandle.symbol !== activeSymbol) return;
@@ -204,7 +204,35 @@ export const MarketContext: React.FC = () => {
             value: latestCandle.volume,
             color: latestCandle.close >= latestCandle.open ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
         });
-    }, [latestCandle, activeSymbol]);
+    }, [latestCandle, activeSymbol, history]);
+
+    // Update with real-time TICKS from WebSocket to make chart 100% live
+    useEffect(() => {
+        if (!priceData || priceData.price === undefined || !candlestickSeriesRef.current || history.length === 0) return;
+
+        const lastCandle = history[history.length - 1];
+        
+        // Safety check to avoid weird past ticks warping the current candle
+        if (priceData.timestamp < lastCandle.timestamp - 60000) return;
+
+        const currentPrice = priceData.price;
+        const newHigh = Math.max(lastCandle.high, currentPrice);
+        const newLow = Math.min(lastCandle.low, currentPrice);
+
+        lastCandle.high = newHigh;
+        lastCandle.low = newLow;
+        lastCandle.close = currentPrice;
+
+        const t = Math.floor(lastCandle.timestamp / 1000) as Time;
+
+        candlestickSeriesRef.current.update({
+            time: t,
+            open: lastCandle.open,
+            high: newHigh,
+            low: newLow,
+            close: currentPrice,
+        });
+    }, [priceData, history]);
 
     return (
         <div className="flex flex-col h-full bg-[#0b0e14] overflow-hidden">

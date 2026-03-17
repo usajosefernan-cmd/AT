@@ -111,70 +111,59 @@ export const useStore = create<AppStore>((set) => ({
             color: "#a78bfa",
             timestamp: Date.now() 
         },
-        risk_manager: { 
-            id: "risk_manager", 
-            name: "DIRECTOR DE RIESGOS", 
-            role: "COMPLIANCE & SEGURIDAD", 
+        l3_axi: { 
+            id: "l3_axi", 
+            name: "L3 AXI FOREX", 
+            role: "DIRECTOR DE RIESGOS FOREX", 
             status: "idle", 
-            action: "AUDITANDO", 
-            mission: "VETAR OPERACIONES QUE NO CUMPLAN CON LAS REGLAS DE AXI SELECT Y PROTEGER EL DRAWDOWN DIARIO.",
-            personality: "ESTRICTO, CAUTELOSO Y CERO TOLERANCIA A LA EXPOSICIÓN NO JUSTIFICADA.",
-            color: "#22c55e",
+            action: "MONITORIZANDO", 
+            mission: "GESTIONAR LA EXPOSICIÓN EN MERCADOS FX MAYORES (EURUSD, GBPUSD, JPY) SEGÚN PARÁMETROS MACRO.",
+            personality: "FRÍO, CALCULADOR, FUNDAMENTAL",
+            color: "#f59e0b",
             timestamp: Date.now() 
         },
-        sentinel: { 
-            id: "sentinel", 
-            name: "JEFE DE INTELIGENCIA", 
-            role: "RADAR DE MERCADO", 
+        l3_crypto: { 
+            id: "l3_crypto", 
+            name: "L3 CRYPTO MAJORS", 
+            role: "DIRECTOR DE RIESGOS CRIPTO", 
             status: "idle", 
-            action: "ESCANEO ACTIVO", 
-            mission: "MONITORIZAR TODOS LOS EXCHANGES EN BUSCA DE ANOMALÍAS DE VOLUMEN Y SETUPS DE ALTA PROBABILIDAD.",
-            personality: "VIGILANTE, PRECISO Y ANALÍTICO. NO DUERME.",
-            color: "#4a6cf7",
-            timestamp: Date.now() 
-        },
-        memecoin_sniper: { 
-            id: "memecoin_sniper", 
-            name: "OPERADOR DE GEMAS", 
-            role: "DEPARTAMENTO MEME (MEXC)", 
-            status: "idle", 
-            action: "BUSCANDO SEÑALES", 
-            mission: "IDENTIFICAR Y SNIPEAR ACTIVOS DE BAJA CAPITALIZACIÓN CON RIESGO ASIMÉTRICO POSITIVO.",
-            personality: "AGRESIVO, VELOZ Y OPORTUNISTA. ESPECIALISTA EN VOLATILIDAD EXTREMA.",
-            color: "#f472b6",
-            timestamp: Date.now() 
-        },
-        crypto_perp: { 
-            id: "crypto_perp", 
-            name: "OPERADOR DE FUTUROS", 
-            role: "DERIVADOS CRIPTO (HL)", 
-            status: "idle", 
-            action: "ANALIZANDO FLUJO", 
-            mission: "EJECUTAR POSICIONES EN PERPETUOS BASADO EN DERIVACIÓN DE PRECIO Y LIQUIDEZ MASIVA.",
-            personality: "CALCULADOR, FRÍO Y MATEMÁTICO. ENFOQUE EN MICRO-OPORTUNIDADES DE MERCADO.",
+            action: "MONITORIZANDO", 
+            mission: "CONTROLAR EL FLUJO EN PERPETUOS DE BTC/ETH/SOL. OPTIMIZAR LIQUIDACIONES.",
+            personality: "AGRESIVO, MATEMÁTICO, VELOZ",
             color: "#6366f1",
             timestamp: Date.now() 
         },
-        equities_analyst: { 
-            id: "equities_analyst", 
-            name: "ANALISTA DE ACCIONES", 
-            role: "MERCADOS US (ALPACA)", 
+        l3_memes: { 
+            id: "l3_memes", 
+            name: "L3 MEMECOINS", 
+            role: "DIRECTOR DE RIESGOS DGEN", 
+            status: "idle", 
+            action: "MONITORIZANDO", 
+            mission: "ASIGNAR CAPITAL DE ALTO RIESGO A ACTIVOS HIPER-VOLÁTILES SIN COMPROMETER LA CUENTA PRINCIPAL.",
+            personality: "OPORTUNISTA, CAÓTICO, IMPLACABLE",
+            color: "#f472b6",
+            timestamp: Date.now() 
+        },
+        l3_equities: { 
+            id: "l3_equities", 
+            name: "L3 EQUITIES", 
+            role: "DIRECTOR DE RIESGOS ACCIONES", 
             status: "idle", 
             action: "STANDBY", 
-            mission: "OPERAR EL MERCADO DE ACCIONES US Y ETFS SEGÚN TENDENCIAS MACROECONÓMICAS Y TECNOLÓGICAS.",
-            personality: "PROFESIONAL, PACIENTE Y FUNDAMENTALISTA.",
+            mission: "OPERATIVIDAD SOBRE ACCIONES REGULADAS US (LARGE CAPS). RESPETO ESTRICTO AL VWAP Y HORARIOS (RTH).",
+            personality: "MÓDICO, INSTITUCIONAL, PACIENTE",
             color: "#10b981",
             timestamp: Date.now() 
         },
-        forex_macro: { 
-            id: "forex_macro", 
-            name: "ESTRATEGA FOREX", 
-            role: "DIVISAS & COMMODITIES", 
+        l3_small_caps: { 
+            id: "l3_small_caps", 
+            name: "L3 SMALL CAPS", 
+            role: "DIRECTOR DE RIESGOS SMALL CAPS", 
             status: "idle", 
-            action: "MONITORIZANDO MACRO", 
-            mission: "CAPTURA DE MOVIMIENTOS EN PARES MAYORES Y ORO BASADO EN DIFERENCIALES DE TASAS Y FLUJOS CAPITALES.",
-            personality: "SOFISTICADO, SABIO Y ESTRATÉGICO.",
-            color: "#f59e0b",
+            action: "MONITORIZANDO", 
+            mission: "SCALPEAR EVENTOS DE EXPANSIÓN CON PRECAUCIÓN ANTE DILUCIÓN Y OFFERINGS. MANTENER DRAWDOWN AL MÍNIMO.",
+            personality: "CAUTO, PARANOICO, EFICIENTE",
+            color: "#ef4444",
             timestamp: Date.now() 
         }
     },
@@ -267,10 +256,10 @@ export function initSocket(token?: string) {
     socket.on("market_tick", (tick: MarketTick) => {
         if (!tick.symbol || !tick.price) return;
         
-        // Throttle: max 1 update per symbol per 500ms
+        // Throttle: max 1 update per symbol per 100ms for that high-frequency feel
         const now = Date.now();
         const last = tickThrottle[tick.symbol] || 0;
-        if (now - last < 500) return;
+        if (now - last < 100) return;
         tickThrottle[tick.symbol] = now;
         
         useStore.getState().updatePrice(tick);
@@ -337,6 +326,61 @@ export function initSocket(token?: string) {
              const updated = useStore.getState().activePositions.map((p) => p.id === d.positionId ? { ...p, unrealizedPnl: d.unrealizedPnl, unrealizedPnlPct: d.unrealizedPnlPct || 0 } : p);
              useStore.setState({ activePositions: updated });
         }
+    });
+
+    // Omnichannel CEO bindings
+    socket.on("ceo_processing_command", (data: any) => {
+        useStore.getState().updateAgent("ceo", { status: "active", action: "PENSANDO...", target: data.text });
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "ceo", text: `[Omni] Procesando: ${data.text} (Source: ${data.source})`, level: "info", timestamp: Date.now() });
+    });
+
+    socket.on("ceo_response", (data: any) => {
+        useStore.getState().updateAgent("ceo", { status: "success", action: "HABLANDO", target: data.text });
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "ceo", text: `[CEO] ${data.text}`, level: "info", timestamp: Date.now() });
+        setTimeout(() => useStore.getState().updateAgent("ceo", { status: "idle", action: "MONITORIZANDO", target: "" }), 4000);
+    });
+
+    socket.on("swarm_alert", (data: any) => {
+        const agMapping: Record<string, string> = {
+            "1_axi_forex": "l3_axi",
+            "2_crypto_majors": "l3_crypto",
+            "3_memecoins": "l3_memes",
+            "4_equities_large": "l3_equities",
+            "5_small_caps": "l3_small_caps"
+        };
+        const l3Id = agMapping[data.ecosystem];
+        if (l3Id) {
+            useStore.getState().updateAgent(l3Id, { status: "active", action: "EVALUANDO RIESGO", target: data.asset });
+        }
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: l3Id || "system", text: `⚡ ALERTA L1 (${data.type}) en ${data.asset} [${data.ecosystem}]`, level: "warn", timestamp: Date.now() });
+    });
+
+    socket.on("trade_executed", (data: any) => {
+        const agMapping: Record<string, string> = {
+            "1_axi_forex": "l3_axi",
+            "2_crypto_majors": "l3_crypto",
+            "3_memecoins": "l3_memes",
+            "4_equities_large": "l3_equities",
+            "5_small_caps": "l3_small_caps"
+        };
+        const l3Id = agMapping[data.ecosystem];
+        if (l3Id) {
+            useStore.getState().updateAgent(l3Id, { status: "success", action: "APROBADO", target: data.asset });
+            setTimeout(() => useStore.getState().updateAgent(l3Id, { status: "idle", action: "MONITORIZANDO", target: "" }), 5000);
+        }
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: l3Id || "system", text: `✅ TRADE APROBADO L3 en ${data.asset} [${data.ecosystem}]`, level: "success", timestamp: Date.now() });
+    });
+
+    socket.on("swarm_status_changed", (data: any) => {
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: `System Swarm status changed to ${data.status} by ${data.source}`, level: "warn", timestamp: Date.now() });
+    });
+    
+    socket.on("panic_mode_activated", (data: any) => {
+        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: `🚨 PANIC MODE TRIGGERED BY ${data.source}`, level: "error", timestamp: Date.now() });
+        for (const ag of Object.values(useStore.getState().agents)) {
+            useStore.getState().updateAgent(ag.id, { status: "error", action: "HALT" });
+        }
+        useStore.getState().setKillSwitch(true);
     });
 
     return socket;

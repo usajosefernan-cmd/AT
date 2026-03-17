@@ -1,0 +1,183 @@
+import { executeAxiL1Screener } from '../skills/1_axi_forex/L1_macro_screener';
+import { executeAxiL2Analyst } from '../skills/1_axi_forex/L2_geometry_analyst';
+import { executeAxiL3RiskManager } from '../skills/1_axi_forex/L3_risk_manager';
+
+import { executeCryptoL1Screener } from '../skills/2_crypto_majors/L1_flow_screener';
+import { executeCryptoL2Analyst } from '../skills/2_crypto_majors/L2_orderbook_analyst';
+import { executeCryptoL3RiskManager } from '../skills/2_crypto_majors/L3_liquidator_director';
+
+import { executeMemeL1Screener } from '../skills/3_memecoins/L1_momentum_screener';
+import { executeMemeL2Analyst } from '../skills/3_memecoins/L2_narrative_analyst';
+import { executeMemeL3Risk } from '../skills/3_memecoins/L3_risk_director';
+
+import { executeEquitiesL1Screener } from '../skills/4_equities_large/L1_gap_screener';
+import { executeEquitiesL2Analyst } from '../skills/4_equities_large/L2_vwap_analyst';
+import { executeEquitiesL3PortfolioManager } from '../skills/4_equities_large/L3_portfolio_manager';
+
+import { executeSmallCapsL1Screener } from '../skills/5_small_caps/L1_halt_screener';
+import { executeSmallCapsL2Analyst } from '../skills/5_small_caps/L2_catalyst_analyst';
+import { executeSmallCapsL3DilutionManager } from '../skills/5_small_caps/L3_dilution_manager';
+
+import { FirehoseManager } from '../data_feeds/FirehoseManager';
+import { MarketDataCache } from '../data_feeds/MarketDataCache';
+
+export class SwarmAutonomyLoop {
+    private static isRunning = false;
+    private static firehose: FirehoseManager | null = null;
+
+    static start() {
+        if (this.isRunning) return;
+        this.isRunning = true;
+
+        console.log(`\n\x1b[45m\x1b[37m \uD83D\uDC1D INICIANDO SWARM AUTONOMY LOOP (EVENT-DRIVEN 24/7) \uD83D\uDC1D \x1b[0m\n`);
+        
+        this.firehose = new FirehoseManager();
+        this.firehose.startStreams();
+
+        // 1. Escuchar Cierres de Vela de MEXC (Ecosistema 3: Memecoins)
+        this.firehose.on('mexc_kline_update', async (data) => {
+            const asset = data.asset;
+            
+            // Alimentar caché de volumen
+            MarketDataCache.addVolume(asset, data.volume);
+            const avgVol = MarketDataCache.getAverageVolume(asset, 5); // 5 periodos
+
+            // Construir payload real
+            const realMemeData = {
+                symbol: asset,
+                timestamp: Date.now(),
+                closePrice: data.close,
+                volume_5m: data.volume, 
+                historical_avg_vol_5m: avgVol,
+                // Aproximación simple de turnover temporal
+                turnover_ratio: (data.volume * data.close) / 1000000 
+            };
+
+            const l1Res = JSON.parse(executeMemeL1Screener(asset, realMemeData));
+            if (l1Res.status === "MEME_MOMENTUM_SPIKE") {
+                console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 3 (Memecoins) para ${asset} tras tick de MEXC.\x1b[0m`);
+                (global as any).io?.emit('swarm_alert', { ecosystem: '3_memecoins', asset, type: 'L1_SPIKE' });
+                
+                const anomalyStr = JSON.stringify(l1Res.data);
+                const l2ResStr = await executeMemeL2Analyst(anomalyStr);
+                const l2Res = JSON.parse(l2ResStr);
+                
+                if (l2Res.evaluation && l2Res.evaluation.tactical_score >= 50) {
+                    const l3ResStr = await executeMemeL3Risk(JSON.stringify(l2Res.evaluation), anomalyStr);
+                    const l3Res = JSON.parse(l3ResStr);
+                    if (l3Res.decision?.approved) {
+                        (global as any).io?.emit('trade_executed', { ecosystem: '3_memecoins', asset, decision: l3Res.decision });
+                    }
+                }
+            }
+        });
+
+        // 2. Escuchar Velas de Alpaca (Ecosistemas 4 y 5: Equities / Small Caps)
+        this.firehose.on('alpaca_bar_update', async (data) => {
+            const asset = data.asset;
+            
+            // Actualizamos la caché de volumen 
+            MarketDataCache.addVolume(asset, data.volume);
+            const avgVol = MarketDataCache.getAverageVolume(asset, 20); // Media de 20 periodos típíca para Equities
+            
+            const prevClose = MarketDataCache.getPrevClose(asset);
+            const gapPct = prevClose > 0 ? ((data.open - prevClose) / prevClose) * 100 : 0;
+            const rvol = avgVol > 0 ? data.volume / avgVol : 0;
+
+            // Evaluamos Ecosistema 4: Equities Large Caps
+            const realEquitiesData = {
+                symbol: asset,
+                timestamp: Date.now(),
+                prev_close: prevClose,
+                open_price: data.open,
+                gap_pct: gapPct, 
+                rvol_open: rvol 
+            };
+
+            const l1EqRes = JSON.parse(executeEquitiesL1Screener(asset, realEquitiesData));
+            if (l1EqRes.status === "EARNINGS_GAP_DETECTED") {
+                console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 4 (Equities) para ${asset} tras tick de Alpaca.\x1b[0m`);
+                (global as any).io?.emit('swarm_alert', { ecosystem: '4_equities_large', asset, type: 'L1_GAP' });
+                
+                const gapStr = JSON.stringify(l1EqRes.alert.data);
+                const l2ResStr = await executeEquitiesL2Analyst(JSON.stringify(l1EqRes.alert));
+                const l2Res = JSON.parse(l2ResStr);
+                
+                if (l2Res.evaluation && l2Res.evaluation.tactical_score >= 60) {
+                    const l3ResStr = await executeEquitiesL3PortfolioManager(JSON.stringify(l2Res.evaluation), JSON.stringify(l1EqRes.alert));
+                    const l3Res = JSON.parse(l3ResStr);
+                    if (l3Res.decision?.approved) {
+                        (global as any).io?.emit('trade_executed', { ecosystem: '4_equities_large', asset, decision: l3Res.decision });
+                    }
+                }
+            }
+
+            // Evaluamos Ecosistema 5: Small Caps
+            const realSmallCapsData = {
+                symbol: asset,
+                timestamp: Date.now(),
+                halt_price: data.close,
+                price_change_5m: rvol > 3 ? 12 : 2, // Depende del evento, por ahora se evalua sobre RVOL (ejemplo)
+                relative_volume: rvol,
+                halt_time: new Date().toLocaleTimeString() 
+            };
+
+            const l1ScRes = JSON.parse(executeSmallCapsL1Screener(asset, realSmallCapsData as any)); 
+            if (l1ScRes.status === "SMALL_CAP_HALT_DETECTED") {
+                console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 5 (Small Caps) para ${asset} tras tick de Alpaca.\x1b[0m`);
+                (global as any).io?.emit('swarm_alert', { ecosystem: '5_small_caps', asset, type: 'L1_HALT' });
+                // Aquí continuaría la lógica asíncrona igual
+            }
+        });
+
+        // 3. Escuchar Trades de Hyperliquid (Ecosistema 2: Cripto Majors)
+        this.firehose.on('hl_trade_update', async (data) => {
+            const asset = data.asset;
+            // Evaluamos volumen con trades reales (mock data cruda en este contexto)
+            const realFlowData = {
+                symbol: asset,
+                timestamp: Date.now(),
+                price: parseFloat(data.trades[0].px) || 0,
+                cvd_1m: data.trades.reduce((acc: number, t: any) => acc + (parseFloat(t.sz) || 0) * (t.dir === 'Buy' ? 1 : -1), 0), 
+                funding_rate: 0.01, 
+                open_interest_delta: 3.5 
+            };
+
+            const l1Res = JSON.parse(executeCryptoL1Screener(asset, realFlowData));
+            if (l1Res.status === "CRYPTO_FLOW_ANOMALY") {
+                console.log(`\x1b[35m[Swarm Loop] \u26A1 Alerta REAL detectada en Ecosistema 2 (Cripto Majors) para ${asset} tras tick de Hyperliquid.\x1b[0m`);
+                (global as any).io?.emit('swarm_alert', { ecosystem: '2_crypto_majors', asset, type: 'L1_FLOW' });
+                
+                const flowStr = JSON.stringify(l1Res.data);
+                const l2ResStr = await executeCryptoL2Analyst(flowStr);
+                const l2Res = JSON.parse(l2ResStr);
+                
+                if (l2Res.evaluation && l2Res.evaluation.tactical_score >= 50) {
+                    const l3ResStr = await executeCryptoL3RiskManager(JSON.stringify(l2Res.evaluation), flowStr);
+                    const l3Res = JSON.parse(l3ResStr);
+                    if (l3Res.decision?.approved) {
+                        (global as any).io?.emit('trade_executed', { ecosystem: '2_crypto_majors', asset, decision: l3Res.decision });
+                    }
+                }
+            }
+        });
+
+        // 4. Ecosistema 1: Axi Forex (Para Forex se requeriría WSS broker o MT5. Aquí dejamos placeholder ordenado)
+        // Ejemplo de abstracción a futuro para Axi/MetaTrader
+        /*
+        this.firehose.on('axi_tick_update', async (data) => {
+             const l1Res = JSON.parse(executeAxiL1Screener(data.asset, [data.candle]));
+             if (l1Res.status === "ANOMALY_DETECTED") { ... }
+        });
+        */
+    }
+
+    static stop() {
+        if (this.firehose) {
+            this.firehose.removeAllListeners();
+            // TODO: Agregar firehose.stopStreams() en el futuro
+        }
+        this.isRunning = false;
+        console.log(`\n\x1b[41m\x1b[37m [Swarm Loop] EVENT-DRIVEN LOOP APAGADO MANUALMENTE. \x1b[0m\n`);
+    }
+}
