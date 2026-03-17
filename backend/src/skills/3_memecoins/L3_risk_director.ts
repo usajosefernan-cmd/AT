@@ -72,7 +72,7 @@ async function internalMemeRiskEvaluation(alert: MemeSpikeAlert, narrativeEval: 
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = VectorMemoryManager.queryPastMistakes("3_memecoins", { phase: narrativeEval.pump_phase });
+    const mistakes = await VectorMemoryManager.queryPastMistakes("3_memecoins", { phase: narrativeEval.pump_phase });
     if (mistakes.length >= 3) {
         return {
             approved: false,

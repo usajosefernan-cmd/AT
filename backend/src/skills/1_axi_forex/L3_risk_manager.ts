@@ -72,7 +72,7 @@ async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: Ta
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = VectorMemoryManager.queryPastMistakes("1_axi_forex", { pattern: tacticalEval.geometry_patterns.join(',') });
+    const mistakes = await VectorMemoryManager.queryPastMistakes("1_axi_forex", { pattern: tacticalEval.geometry_patterns.join(',') });
     if (mistakes.length >= 3) {
         return {
             approved: false,

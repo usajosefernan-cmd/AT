@@ -55,7 +55,7 @@ async function internalRiskEvaluation(obEval: any, flowData: any): Promise<Crypt
         };
     }
 
-    const mistakes = VectorMemoryManager.queryPastMistakes("2_crypto_majors", { cvd_extreme: true });
+    const mistakes = await VectorMemoryManager.queryPastMistakes("2_crypto_majors", { cvd_extreme: true });
     if (mistakes.length >= 2) {
         return {
             approved: false,

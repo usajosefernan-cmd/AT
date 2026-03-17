@@ -75,7 +75,7 @@ async function internalPortfolioManagerEvaluation(alert: GapAlert, vwapEval: VWA
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = VectorMemoryManager.queryPastMistakes("4_equities_large", { classification: vwapEval.gap_classification });
+    const mistakes = await VectorMemoryManager.queryPastMistakes("4_equities_large", { classification: vwapEval.gap_classification });
     let approvedSize = 0.5; // 0.5% del Portfolio
     let rationalePrefix = `APROBADO. Estructura "${vwapEval.gap_classification}" institucional validada (RVOL ${alert.data.rvol_open}x).`;
 

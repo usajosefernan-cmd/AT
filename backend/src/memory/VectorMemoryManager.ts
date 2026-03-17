@@ -1,8 +1,7 @@
-import fs from 'fs';
-import path from 'path';
+import { supabase } from '../utils/supabaseClient';
 
 export interface TradeMemory {
-    tradeId: string;
+    trade_id: string;
     ecosystem: string;
     rationale: string;
     profit_loss: number;
@@ -11,80 +10,83 @@ export interface TradeMemory {
 }
 
 export class VectorMemoryManager {
-    private static dbPath = path.join(__dirname, 'memory_db.json');
-    private static memory: TradeMemory[] = [];
 
-    static init() {
-        if (fs.existsSync(this.dbPath)) {
-            const data = fs.readFileSync(this.dbPath, 'utf8');
-            try {
-                this.memory = JSON.parse(data);
-            } catch (e) {
-                this.memory = [];
+    /**
+     * Genera un embedding para el contexto actual. 
+     * En producción, deberías llamar a la API de embeddings de Groq, Mistral u OpenAI.
+     */
+    private static async generateEmbedding(text: string): Promise<number[]> {
+        // Mock: Array de 1536 dimensiones (estándar OpenAI)
+        // Reemplazar con llamada real a tu proveedor de LLM / Embeddings
+        return Array(1536).fill(0).map(() => Math.random() * 0.1); 
+    }
+
+    static async storeTradeResult(tradeId: string, ecosystem: string, rationale: string, profit_loss: number, context: any = {}) {
+        try {
+            // Convertimos el contexto y rationale a texto para generar el vector
+            const textToEmbed = `${ecosystem} | PnL: ${profit_loss} | Rationale: ${rationale} | Context: ${JSON.stringify(context)}`;
+            const embedding = await this.generateEmbedding(textToEmbed);
+
+            const { error } = await supabase.from('trade_memory').insert({
+                trade_id: tradeId,
+                ecosystem: ecosystem,
+                rationale: rationale,
+                profit_loss: profit_loss,
+                timestamp: Date.now(),
+                context: context,
+                embedding: embedding
+            });
+
+            if (error) {
+                console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Memory Error] No se pudo guardar en Supabase:\x1b[0m`, error);
+                return;
             }
+            console.log(`\n\x1b[32m[\uD83E\uDDE0 Vector Memory] -> Trade ${tradeId} guardado con Supabase pgvector. PnL: ${profit_loss}\x1b[0m`);
+        } catch (err) {
+            console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Memory Exception]\x1b[0m`, err);
         }
     }
 
-    private static save() {
-        fs.writeFileSync(this.dbPath, JSON.stringify(this.memory, null, 2));
-    }
-
-    static storeTradeResult(tradeId: string, ecosystem: string, rationale: string, profit_loss: number, context: any = {}) {
-        this.init();
-        this.memory.push({
-            tradeId,
-            ecosystem,
-            rationale,
-            profit_loss,
-            timestamp: Date.now(),
-            context
-        });
-        this.save();
-        console.log(`\n\x1b[32m[\uD83E\uDDE0 Vector Memory] -> Trade ${tradeId} guardado. PnL: ${profit_loss}\x1b[0m`);
-    }
-
-    static queryPastMistakes(ecosystem: string, current_context: any): TradeMemory[] {
-        this.init();
-        console.log(`\n\x1b[33m[\uD83D\uDD0D Vector Memory] -> Consultando histórico de errores en ${ecosystem} para contexto similar...\x1b[0m`);
+    static async queryPastMistakes(ecosystem: string, current_context: any): Promise<TradeMemory[]> {
+        console.log(`\n\x1b[33m[\uD83D\uDD0D Vector Memory] -> Consultando pgvector en Supabase histórico de errores en ${ecosystem} para contexto similar...\x1b[0m`);
         
-        const allMistakes = this.memory.filter(m => m.ecosystem === ecosystem && m.profit_loss < 0);
-        const similarMistakes = allMistakes.filter(mistake => this.isContextSimilar(current_context, mistake.context));
-        
-        if (similarMistakes.length > 0) {
-           console.log(`\x1b[31m[\u26A0\uFE0F Alerta Memoria] Se encontraron ${similarMistakes.length} errores pasados similares.\x1b[0m`);
-        } else {
-           console.log(`\x1b[90m[Memoria Limpia] No hay registros de fallas catastróficas recientes bajo este contexto.\x1b[0m`);
-        }
+        try {
+            const contextStr = JSON.stringify(current_context);
+            const queryEmbedding = await this.generateEmbedding(`Context: ${contextStr}`);
 
-        return similarMistakes;
-    }
+            // Buscamos similitud superior al 85% (1 - 0.15 de distancia)
+            const { data, error } = await supabase.rpc('match_trade_memory', {
+                query_embedding: queryEmbedding,
+                match_threshold: 0.85, 
+                match_count: 5,
+                ecosystem_filter: ecosystem
+            });
 
-    private static isContextSimilar(current: any, past: any): boolean {
-        if (!current || !past) return false;
-        if (typeof current !== 'object' || typeof past !== 'object') return false;
-        
-        let matchCount = 0;
-        let totalCount = 0;
-
-        for (const key of Object.keys(current)) {
-            if (past[key] !== undefined) {
-                if (typeof current[key] === 'number' && typeof past[key] === 'number') {
-                    totalCount++;
-                    const diff = Math.abs(current[key] - past[key]);
-                    const maxVal = Math.max(Math.abs(current[key]), Math.abs(past[key]), 1); // evitar div/0
-                    const percentDiff = diff / maxVal;
-                    
-                    if (percentDiff <= 0.15) { // Margen del 15% de similitud
-                        matchCount++;
-                    }
-                } else if (typeof current[key] === 'string' && typeof past[key] === 'string') {
-                    totalCount++;
-                    if (current[key] === past[key]) matchCount++;
-                }
+            if (error) {
+                console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Query Error] Error en RPC Supabase:\x1b[0m`, error);
+                return [];
             }
-        }
 
-        // Si hay al menos un factor de contexto comparable y la mayoría coincide
-        return totalCount > 0 && (matchCount / totalCount) >= 0.5;
+            // Filtrar y mapear los errores
+            const similarMistakes = (data || []).filter((row: any) => row.profit_loss < 0).map((row: any) => ({
+                trade_id: row.trade_id,
+                ecosystem: row.ecosystem,
+                rationale: row.rationale,
+                profit_loss: row.profit_loss,
+                timestamp: row.timestamp,
+                context: row.context
+            }));
+
+            if (similarMistakes.length > 0) {
+               console.log(`\x1b[31m[\u26A0\uFE0F Alerta Memoria] Se encontraron ${similarMistakes.length} errores pasados similares en la Vector DB.\x1b[0m`);
+            } else {
+               console.log(`\x1b[90m[Memoria Limpia] No hay registros de fallas catastróficas recientes bajo este contexto en Supabase.\x1b[0m`);
+            }
+
+            return similarMistakes;
+        } catch (err) {
+            console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Query Exception]\x1b[0m`, err);
+            return [];
+        }
     }
 }

@@ -304,7 +304,7 @@ INSTRUCCIONES:
                     broadcastAgentLog("ceo",
                         `✅ TRADE APROBADO: ${signal.action} ${signal.symbol} $${signal.notional_usd}`,
                         "success");
-                    await this.telegram.broadcastAlert(
+                    TelegramManager.broadcastAlert(
                         `🎯 *SNIPER TRADE*\n${signal.action} ${signal.symbol} @ $${signal.entry_price}\nSL: ${signal.stop_loss_pct}% | TP: ${signal.take_profit_pct}%\n${signal.rationale}`
                     );
                 } else {

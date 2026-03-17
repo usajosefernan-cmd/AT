@@ -350,7 +350,7 @@ export class MarketScannerLoop {
                 `🗣️ "¡Ejecutado! ${signal.action} ${signal.symbol} en PAPER. Buen trabajo equipo."`,
                 "success");
 
-            await this.telegram.broadcastAlert(
+            TelegramManager.broadcastAlert(
                 `🏢 *TRADE ABIERTO (SCANNER)*\n🎯 ${signal.action} ${signal.symbol} @ $${signal.entry_price}\n💰 $${signal.notional_usd}\n📊 Vol spike: ${volumeSpike.toFixed(1)}x\n💡 ${signal.rationale}`
             );
         } else {

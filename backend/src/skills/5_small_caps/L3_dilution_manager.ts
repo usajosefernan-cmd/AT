@@ -73,7 +73,7 @@ async function internalDilutionEvaluation(alert: SmallCapAlert, catalystEval: Ca
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = VectorMemoryManager.queryPastMistakes("5_small_caps", { setup: catalystEval.setup_classification });
+    const mistakes = await VectorMemoryManager.queryPastMistakes("5_small_caps", { setup: catalystEval.setup_classification });
     let riskAmountUsd = 50; 
     let rationalePrefix = `APROBADO. El setup ${catalystEval.setup_classification} es óptimo y la velocidad de cinta soporta el Squeeze.`;
 

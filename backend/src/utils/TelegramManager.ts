@@ -87,7 +87,7 @@ export class TelegramManager {
                 if (this.ceoHandler) {
                     try {
                         const response = await this.ceoHandler(msg.text);
-                        this.sendMessage(`CEO: ${response}`);
+                        this.sendMessage(response);
                         this.emitToFrontend('ceo_response', { text: response, source: 'telegram' });
                     } catch (error: any) {
                         this.sendMessage(`❌ Error en el núcleo CEO: ${error.message}`);
@@ -95,7 +95,7 @@ export class TelegramManager {
                     }
                 } else {
                     const response = `CEO Agent no sincronizado.`;
-                    this.sendMessage(`CEO: ${response}`);
+                    this.sendMessage(response);
                 }
             }
         });
