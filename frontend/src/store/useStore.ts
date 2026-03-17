@@ -63,6 +63,7 @@ export type AgentLogEntry = AgentLog;
 
 interface AppStore {
     connected: boolean;
+    pixelAssets: any;
     activeDesk: DeskId;
     marketData: Record<string, { price: number; prevPrice: number; source: string; timestamp: number }>;
     latestCandle: OHLCCandle | null;
@@ -77,6 +78,7 @@ interface AppStore {
     selectedSymbols: Record<string, string>; // deskId -> symbol
 
     // Actions
+    setPixelAssets: (assets: any) => void;
     setConnected: (v: boolean) => void;
     setActiveDesk: (id: DeskId) => void;
     updatePrice: (tick: MarketTick) => void;
@@ -96,6 +98,7 @@ interface AppStore {
 
 export const useStore = create<AppStore>((set) => ({
     connected: false,
+    pixelAssets: null,
     activeDesk: "overview",
     marketData: {},
     latestCandle: null,
@@ -181,6 +184,7 @@ export const useStore = create<AppStore>((set) => ({
         forex: "EURUSD"
     },
 
+    setPixelAssets: (assets) => set({ pixelAssets: assets }),
     setConnected: (v) => set({ connected: v }),
     setActiveDesk: (id) => set({ activeDesk: id }),
     updatePrice: (tick) => set((s) => ({
@@ -239,6 +243,11 @@ export function initSocket(token?: string) {
             })
             .catch(err => console.error("Initial fetch error:", err));
     });
+    
+    socket.on("pixel_assets_loaded", (assets: any) => {
+        useStore.getState().setPixelAssets(assets);
+    });
+
     socket.on("disconnect", () => {
         useStore.setState({ connected: false });
         useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: "❌ Connection Lost from Backend", level: "error", timestamp: Date.now() });

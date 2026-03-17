@@ -74,8 +74,8 @@ function detectMemeSpike(symbol: string, mock?: MemeMarketData): MemeSpikeAlert 
 
     const rvol = mock.volume_5m / mock.historical_avg_vol_5m;
 
-    // Condición de quiebre: RVOL > 500% (5.0) y Turnover ratio crítico
-    if (rvol > 5.0 && mock.turnover_ratio > 0.5) {
+    // Condición de quiebre: RVOL > 1.5
+    if (rvol > 1.5) {
         return {
             symbol: mock.symbol,
             timestamp: mock.timestamp,

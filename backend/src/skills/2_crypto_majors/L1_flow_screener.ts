@@ -43,7 +43,7 @@ export function executeCryptoL1Screener(symbol: string, liveData?: CryptoFlowDat
     };
 
     // Lógica básica: Si el CVD es agresivo hacia un lado o hay picos de OI
-    if (Math.abs(data.cvd_1m) > 1000000 || data.open_interest_delta > 3.0) {
+    if (Math.abs(data.cvd_1m) > 10000 || data.open_interest_delta > 1.0) {
         const alert: FlowAnomalyAlert = {
             symbol: data.symbol,
             timestamp: data.timestamp,

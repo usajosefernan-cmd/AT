@@ -20,10 +20,13 @@ import { executeSmallCapsL3DilutionManager } from '../skills/5_small_caps/L3_dil
 
 import { FirehoseManager } from '../data_feeds/FirehoseManager';
 import { MarketDataCache } from '../data_feeds/MarketDataCache';
+import { ProfileParser } from '../agents/ProfileParser';
+import { askGroq } from '../ai/LLMService';
 
 export class SwarmAutonomyLoop {
     private static isRunning = false;
     private static firehose: FirehoseManager | null = null;
+    private static heartbeatInterval: NodeJS.Timeout | null = null;
 
     static start() {
         if (this.isRunning) return;
@@ -33,6 +36,9 @@ export class SwarmAutonomyLoop {
         
         this.firehose = new FirehoseManager();
         this.firehose.startStreams();
+
+        // 🚨 HEARTBEAT OPENCLAW: Proactividad del Enjambre (Cada 45s)
+        this.heartbeatInterval = setInterval(() => this.runHeartbeat(), 45000);
 
         // 1. Escuchar Cierres de Vela de MEXC (Ecosistema 3: Memecoins)
         this.firehose.on('mexc_kline_update', async (data) => {
@@ -177,7 +183,37 @@ export class SwarmAutonomyLoop {
             this.firehose.removeAllListeners();
             // TODO: Agregar firehose.stopStreams() en el futuro
         }
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
         this.isRunning = false;
         console.log(`\n\x1b[41m\x1b[37m [Swarm Loop] EVENT-DRIVEN LOOP APAGADO MANUALMENTE. \x1b[0m\n`);
+    }
+
+    private static async runHeartbeat() {
+        if (!this.isRunning) return;
+        console.log(`\x1b[36m[Swarm Heartbeat]\x1b[0m Latido del enjambre iniciado. Despertando Directores L3...`);
+
+        // Emitimos al frontend que hay un latido de enjambre (Animación de Pixel Agents)
+        (global as any).io?.emit('swarm_heartbeat_activity', { status: 'working' });
+
+        const marketState = JSON.stringify(MarketDataCache.getSnapshot());
+
+        // Ejemplo: Despertar al Director Crypto Majors
+        try {
+            const cryptoProfile = ProfileParser.getProfile("L3_Crypto_Majors");
+            const context = `El mercado actual (Volumes/Prices): ${marketState}\n\n¿Hay alguna oportunidad inmediata que requiera acción proactiva? Responde con un JSON breve { "action": "WAIT" | "TRADE", "reason": string }`;
+            
+            // Usamos modelo rápido para el heartbeat (llama-8b o similar si tuvieramos, pero versatile es rápido)
+            const { data } = await askGroq<string>(cryptoProfile, context, { jsonMode: true });
+            
+            const decision = JSON.parse(data || '{}');
+            if (decision.action === 'TRADE') {
+                console.log(`\x1b[35m[L3 Crypto Majors PROACTIVO]\x1b[0m Decidió ejecutar un trade por latido! Razón: ${decision.reason}`);
+                // Aquí el motor ejecutaría la orden real usando PaperExecutionEngine
+            } else {
+                console.log(`\x1b[90m[L3 Crypto Majors] Skipping heartbeat. Razón: ${decision.reason}\x1b[0m`);
+            }
+        } catch (e: any) {
+            console.error(`[Heartbeat Error] ${e.message}`);
+        }
     }
 }

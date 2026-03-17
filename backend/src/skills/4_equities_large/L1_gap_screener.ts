@@ -71,8 +71,8 @@ function detectGapSpike(symbol: string, mock?: EquityGapData): GapAlert | null {
         };
     }
 
-    // Condición de quiebre algorítmico: Gap >= 5% y RVOL >= 2x
-    if (Math.abs(mock.gap_pct) >= 5.0 && mock.rvol_open >= 2.0) {
+    // Condición de quiebre algorítmico: Gap >= 1% y RVOL >= 1.2x
+    if (Math.abs(mock.gap_pct) > 1.0 && mock.rvol_open >= 1.2) {
         return {
             symbol: mock.symbol,
             timestamp: mock.timestamp,

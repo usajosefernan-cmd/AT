@@ -69,8 +69,8 @@ function detectHaltSpike(symbol: string, mock?: HaltSpikeData): SmallCapAlert | 
         };
     }
 
-    // Condición de quiebre algorítmico: Es un Halt al alza y el Float es bajo (< 20M shares)
-    if (mock.halt_type === 'LULD_UP' && mock.float_size < 20000000 && mock.rvol > 5.0) {
+    // Condición de quiebre algorítmico súper sensible
+    if (mock.rvol > 1.5 || (mock as any).relative_volume > 1.5) {
         return {
             symbol: mock.symbol,
             timestamp: mock.timestamp,

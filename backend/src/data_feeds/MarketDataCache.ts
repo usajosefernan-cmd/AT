@@ -45,4 +45,20 @@ export class MarketDataCache {
     static getPrevClose(symbol: string): number {
         return this.prevClosePrices.get(symbol) || 0;
     }
+
+    /**
+     * Devuelve una fotografía del mercado (Volumen actual vs media, prev close)
+     * Utilizado primariamente por los L3 Directors durante su latido OpenClaw.
+     */
+    static getSnapshot(): Record<string, any> {
+        const snapshot: Record<string, any> = {};
+        this.volumeHistory.forEach((history, symbol) => {
+            snapshot[symbol] = {
+                latestVolume: history.length > 0 ? history[history.length - 1] : 0,
+                avgVolume20: this.getAverageVolume(symbol, 20),
+                prevClose: this.getPrevClose(symbol)
+            };
+        });
+        return snapshot;
+    }
 }

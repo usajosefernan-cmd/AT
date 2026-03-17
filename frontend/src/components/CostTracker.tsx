@@ -23,7 +23,7 @@ export default function CostTracker() {
                 today.setHours(0, 0, 0, 0);
 
                 const { data, error } = await supabase
-                    .from('api_usage_logs')
+                    .from('api_telemetry')
                     .select('cost_usd, timestamp');
 
                 if (error) throw error;
@@ -119,7 +119,7 @@ export default function CostTracker() {
             </div>
 
             <div className="text-[10px] text-slate-600 font-mono text-right">
-                *Calculado localmente vía telemetría de carga
+                *Datos reales sincronizados desde Supabase
             </div>
         </div>
     );

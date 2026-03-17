@@ -1,5 +1,37 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
+import axios from 'axios';
+
+async function fetchActiveMEXCTickers(): Promise<string[]> {
+    try {
+        const res = await axios.get('https://api.mexc.com/api/v3/ticker/24hr');
+        const validSyms = res.data
+            .filter((t: any) => parseFloat(t.quoteVolume) > 1000000 && t.symbol.endsWith('USDT'))
+            .map((t: any) => t.symbol);
+        
+        console.log(`[MEXC] Scaneando ${Math.min(validSyms.length, 100)} activos dinámicamente.`);
+        // Emit in chunks of 100 max to avoid ws overflow
+        return validSyms.slice(0, 100); 
+    } catch(e) { return ['PEPEUSDT', 'WIFUSDT', 'BONKUSDT']; }
+}
+
+async function fetchActiveHyperliquidTickers(): Promise<string[]> {
+    try {
+        const res = await axios.post('https://api.hyperliquid.xyz/info', { type: "meta" }, { headers: { 'Content-Type': 'application/json' }});
+        const universe = res.data.universe;
+        const symbols = universe.map((u: any) => u.name);
+        console.log(`[Hyperliquid] Scaneando ${Math.min(symbols.length, 100)} activos dinámicamente.`);
+        return symbols.slice(0, 100);
+    } catch(e) { return ['BTC', 'ETH', 'SOL']; }
+}
+
+async function fetchActiveAlpacaTickers(): Promise<string[]> {
+    // Si tienes cuenta free (IEX), Alpaca suele limitar a 30 suscripciones simultáneas.
+    // Simulamos un fetch dinámico con una lista ampliada de high-volume + small caps.
+    const symbols = ["AAPL","MSFT","NVDA","TSLA","AMD","AMZN","META","GOOGL","GME","AMC","HOLO","SPY","QQQ","DJT","SMCI","PLTR","MARA","RIOT","COIN","MSTR"];
+    console.log(`[Alpaca] Scaneando ${symbols.length} activos dinámicamente.`);
+    return symbols;
+}
 
 export class FirehoseManager extends EventEmitter {
     private mexcWs: WebSocket | null = null;
@@ -19,21 +51,24 @@ export class FirehoseManager extends EventEmitter {
         this.connectAlpaca();
     }
 
-    private connectMexc() {
+    private async connectMexc() {
         // MEXC Spot V3 WebSocket
         this.mexcWs = new WebSocket('wss://wbs.mexc.com/ws');
+        const tickers = await fetchActiveMEXCTickers();
 
         this.mexcWs.on('open', () => {
             console.log(`\x1b[36m[Firehose] Conectado a MEXC WSS (Memecoins Spot)\x1b[0m`);
-            // Suscribirse a Klines de 1 min para Memecoins
-            const tickers = ['PEPEUSDT', 'WIFUSDT', 'BONKUSDT'];
             
-            const params = tickers.map(t => `spot@public.kline.v3.api@${t}@Min1`);
-            
-            this.mexcWs?.send(JSON.stringify({
-                method: "SUBSCRIPTION",
-                params: params
-            }));
+            // Suscribirse en batches para no sobrepasar límites de longitud de JSON
+            const batchSize = 30;
+            for (let i = 0; i < tickers.length; i += batchSize) {
+                const batch = tickers.slice(i, i + batchSize);
+                const params = batch.map(t => `spot@public.kline.v3.api@${t}@Min1`);
+                this.mexcWs?.send(JSON.stringify({
+                    method: "SUBSCRIPTION",
+                    params: params
+                }));
+            }
 
             // Keep-alive ping
             this.pingIntervals['mexc'] = setInterval(() => {
@@ -46,6 +81,7 @@ export class FirehoseManager extends EventEmitter {
         this.mexcWs.on('message', (data: WebSocket.RawData) => {
             try {
                 const msg = JSON.parse(data.toString());
+                process.stdout.write('.'); // TICK LOG
                 if (msg.c && msg.c.includes('kline') && msg.d && msg.d.k) {
                     const symbol = msg.s; // PEPEUSDT
                     const kline = msg.d.k;
@@ -75,14 +111,14 @@ export class FirehoseManager extends EventEmitter {
         });
     }
 
-    private connectHyperliquid() {
+    private async connectHyperliquid() {
         // Hyperliquid L1 WebSocket
         this.hlWs = new WebSocket('wss://api.hyperliquid.xyz/ws');
+        const coins = await fetchActiveHyperliquidTickers();
 
         this.hlWs.on('open', () => {
             console.log(`\x1b[36m[Firehose] Conectado a Hyperliquid WSS (Cripto Majors Perps)\x1b[0m`);
             // Suscribirse a trades de Majors
-            const coins = ['BTC', 'ETH', 'SOL'];
             coins.forEach(coin => {
                 this.hlWs?.send(JSON.stringify({
                     method: "subscribe",
@@ -100,6 +136,7 @@ export class FirehoseManager extends EventEmitter {
         this.hlWs.on('message', (data: WebSocket.RawData) => {
             try {
                 const msg = JSON.parse(data.toString());
+                process.stdout.write('.'); // TICK LOG
                 if (msg.channel === 'trades' && msg.data && msg.data.length > 0) {
                     const trades = msg.data;
                     const coin = trades[0].coin;
@@ -123,9 +160,10 @@ export class FirehoseManager extends EventEmitter {
         });
     }
 
-    private connectAlpaca() {
+    private async connectAlpaca() {
         // Alpaca IEX Free Tier WebSocket
         this.alpacaWs = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
+        const symbols = await fetchActiveAlpacaTickers();
 
         this.alpacaWs.on('open', () => {
             console.log(`\x1b[36m[Firehose] Conectado a Alpaca WSS (Equities & Small Caps)\x1b[0m`);
@@ -143,12 +181,13 @@ export class FirehoseManager extends EventEmitter {
         this.alpacaWs.on('message', (data: WebSocket.RawData) => {
             try {
                 const msgs = JSON.parse(data.toString());
+                process.stdout.write('.'); // TICK LOG
                 for (const msg of msgs) {
                     if (msg.T === 'success' && msg.msg === 'authenticated') {
                         console.log(`\x1b[32m[Firehose] Alpaca Auth OK. Suscribiéndose...\x1b[0m`);
                         this.alpacaWs?.send(JSON.stringify({
                             action: "subscribe",
-                            bars: ["TSLA", "NVDA", "GME", "AMC"] // Combinando Equities y Small Caps
+                            bars: symbols
                         }));
                     } else if (msg.T === 'b') { // Bar message (kline)
                         this.emit('alpaca_bar_update', {

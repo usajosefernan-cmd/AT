@@ -24,6 +24,7 @@ import OpenAI from "openai";
 import { _getIoInstance } from "../utils/SwarmEvents";
 import { supabase } from "../utils/supabaseClient";
 import crypto from "crypto";
+import { TelemetryLogger } from "../utils/TelemetryLogger";
 
 // ═══════════════════════════════════════════
 // Clients
@@ -463,25 +464,28 @@ function trackUsage(usage: LLMUsage) {
         `[LLM] ${usage.provider.toUpperCase()} ${usage.model}: ${usage.promptTokens}→${usage.completionTokens} tok | ${usage.durationMs}ms | Cache: ${responseCache.size} | Calls: G${sessionStats.geminiCalls}/Q${sessionStats.groqCalls}`
     );
 
+    let costPer1kPrompt = 0;
+    let costPer1kCompletion = 0;
+    if (usage.model.includes('70b') || usage.model.includes('70B')) {
+        costPer1kPrompt = 0.00059;
+        costPer1kCompletion = 0.00079;
+    } else if (usage.model.includes('8b') || usage.model.includes('8B')) {
+        costPer1kPrompt = 0.00005;
+        costPer1kCompletion = 0.00008;
+    }
+    const realCost = ((usage.promptTokens / 1000) * costPer1kPrompt) + ((usage.completionTokens / 1000) * costPer1kCompletion);
+
     const io = _getIoInstance();
     if (io) {
         io.emit('api_cost_update', {
             model: usage.model,
             input_tokens: usage.promptTokens,
             output_tokens: usage.completionTokens,
-            cost_usd: 0,
+            cost_usd: realCost,
             latency_ms: usage.durationMs,
             timestamp: new Date().toISOString()
         });
     }
 
-    // Fire-and-forget: don't spam console if table missing
-    supabase.from('api_usage_logs').insert({
-        model: usage.model,
-        input_tokens: usage.promptTokens,
-        output_tokens: usage.completionTokens,
-        cost_usd: 0,
-        latency_ms: usage.durationMs,
-        timestamp: new Date().toISOString()
-    }).then(() => {}, () => {});
+    TelemetryLogger.logApiUsage(usage.model, usage.promptTokens, usage.completionTokens).catch(() => {});
 }

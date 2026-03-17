@@ -88,7 +88,7 @@ function detectAnomalies(candles: Candle[], asset: string): AnomalyAlert | null 
   
     const zScore = deviation / stdDev;
   
-    if (zScore > 2.0) {
+    if (zScore > 0.1) {
         return {
             asset,
             timestamp: Date.now(),

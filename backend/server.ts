@@ -7,9 +7,15 @@ import { broadcastAgentState, broadcastAgentLog, _setIoInstance } from "./src/ut
 import { WebSocketManager, MarketTick, OHLCCandle } from "./src/utils/WebSocketManager";
 import { PaperExecutionEngine } from "./src/engine/PaperExecutionEngine";
 import { AILoop } from "./src/engine/AILoop";
+import { ProfileParser } from "./src/agents/ProfileParser";
 import { TelegramManager } from "./src/utils/TelegramManager";
 import { updatePaperBalance, savePaperPosition, supabase } from "./src/utils/supabaseClient";
 import { MarketScannerLoop } from "./src/engine/MarketScannerLoop";
+import { loadPixelAssets } from "./src/PixelAssetsLoader";
+import path from "path";
+
+// Pre-load Pixel Assets
+let pixelAssetsCache: any = null;
 
 // ═══════════════════════════════════════════
 // 1. Express + HTTP Server
@@ -17,11 +23,9 @@ import { MarketScannerLoop } from "./src/engine/MarketScannerLoop";
 const app = express();
 
 // Configure CORS for production and local development
-const corsOrigins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://algotradingnew-josfer.web.app"
-];
+const corsOrigins: any = process.env.MODE === "PRODUCTION"
+    ? ["https://algotradingnew-josfer.web.app", "https://algotradingnew.firebaseapp.com"]
+    : true; // true reflects the request origin, allowing any origin with credentials
 
 app.use(cors({
     origin: corsOrigins,
@@ -123,17 +127,14 @@ const marketScanner = new MarketScannerLoop(
     latestPrices
 );
 
+import { SwarmAutonomyLoop } from "./src/engine/SwarmAutonomyLoop";
+
 // Re-wire CEOAgent to use SwarmOrchestrator for force_analysis
 (aiLoop.ceoAgent as any).toolExecutor.onForceAnalysis = () => swarmOrchestrator.runScanCycle();
 
-let swarmInterval: NodeJS.Timeout | null = null;
 function startSwarm() {
-    if (swarmInterval) clearInterval(swarmInterval);
-    
-    // Iniciar el enjambre de especialistas (cada 45s)
-    swarmInterval = setInterval(async () => {
-        await swarmOrchestrator.runScanCycle();
-    }, 45000);
+    // Iniciar el enjambre de especialistas guiado por datos (Event-Driven)
+    SwarmAutonomyLoop.start();
 
     // Iniciar el Scanner Proactivo (cada 5s internamente)
     marketScanner.start();
@@ -142,8 +143,7 @@ function startSwarm() {
     TelegramManager.init(process.env.TELEGRAM_BOT_TOKEN || "");
 }
 function stopSwarm() {
-    if (swarmInterval) clearInterval(swarmInterval);
-    swarmInterval = null;
+    SwarmAutonomyLoop.stop();
     marketScanner.stop();
 }
 
@@ -377,7 +377,7 @@ app.get("/api/health", (_req, res) => {
         connectedClients: io.engine?.clientsCount || 0,
         latestPrices,
         aiStats: aiLoop.getStats(),
-        swarmRunning: swarmInterval !== null,
+        swarmRunning: (SwarmAutonomyLoop as any).isRunning,
     });
 });
 
@@ -397,7 +397,7 @@ app.post("/api/hunter/resume", (_req, res) => {
 });
 
 app.get("/api/hunter/stats", (_req, res) => {
-    res.json({ running: swarmInterval !== null });
+    res.json({ running: (SwarmAutonomyLoop as any).isRunning });
 });
 
 // ═══════════════════════════════════════════
@@ -439,8 +439,12 @@ io.on("connection", (socket) => {
             wsManager.connectAlpaca([data.symbol]);
         }
     });
-});
 
+    // Enviar assets estáticos del Pixel Office al frontend
+    if (pixelAssetsCache) {
+        socket.emit("pixel_assets_loaded", pixelAssetsCache);
+    }
+});
 // ═══════════════════════════════════════════
 // 11. Start Everything
 // ═══════════════════════════════════════════
@@ -452,7 +456,7 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`  📊 Mode: PAPER (Real Data, Virtual Execution)`);
     console.log(`  ⚙️  Listening on: 0.0.0.0:${PORT}`);
     console.log(`  🔒 Supabase Auth Middleware ACTIVE`);
-    console.log(`  🔗 CORS Allowed: ${corsOrigins.join(", ")}`);
+    console.log(`  🔗 CORS Allowed: ${Array.isArray(corsOrigins) ? corsOrigins.join(", ") : "ALL (dev mode)"}`);
     console.log(`${"═".repeat(60)}\n`);
 
     // HYPERLIQUID: Cripto principal
@@ -467,8 +471,21 @@ server.listen(PORT, "0.0.0.0", () => {
     const stockSymbols = (process.env.STOCK_SYMBOLS || "AAPL,TSLA,SPY").split(",");
     wsManager.connectAlpaca(stockSymbols);
 
-    // 🤖 START AUTONOMOUS SWARM ORCHESTRATOR
-    startSwarm();
+    // Cargar ASSETS DE PIXEL AGENTS
+    loadPixelAssets(path.join(__dirname, "../frontend/pixel-agents/webview-ui/public"))
+        .then(assets => {
+            pixelAssetsCache = assets;
+            io.emit("pixel_assets_loaded", assets); // <-- EMIT TO EXISTING CLIENTS!
+            console.log(`  🎨 Pixel Assets Loaded: ${assets.wallTiles?.length||0} walls, ${assets.floorTiles?.length||0} floors, ${assets.characters?.length||0} characters`);
+        })
+        .catch(err => console.error("  ❌ Pixel Assets Error:", err.message));
+
+    // CARGAR PERFILES MARKDOWN OPENCLAW Y ARRANCAR ENJAMBRE
+    ProfileParser.bootstrap().then(() => {
+        console.log(`  🧠 OpenClaw Profiles Loaded`);
+        // 🤖 START AUTONOMOUS SWARM ORCHESTRATOR
+        startSwarm();
+    }).catch(err => console.error("  ❌ ProfileParser Error:", err.message));
 
     console.log(`  📡 Hyperliquid (Cripto):  ${hlSymbols.join(", ")}`);
     console.log(`  📡 MEXC (Memecoins):      ${mexcSymbols.join(", ")}`);

@@ -17,30 +17,9 @@ import {
     getAllAgentMemories,
     saveAgentMemory,
 } from "../utils/supabaseClient";
+import { ProfileParser } from "./ProfileParser";
 
-// ═══════════════════════════════════════════
-// System Prompt del CEO
-// ═══════════════════════════════════════════
-
-const CEO_SYSTEM_PROMPT = `Eres el CEO (Director Ejecutivo) de una corporación de trading algorítmico de élite. Diriges una estructura jerárquica de agentes especializados (tus directores de departamento).
-
-TU ESTRUCTURA ORGANIZATIVA:
-1. DEPARTAMENTO DE INTELIGENCIA (Sentinel): Escanea macro y técnico. Te reporta anomalías.
-2. DEPARTAMENTO DE EJECUCIÓN CRIPTO (Sniper & Perp): Ejecutan trades en MEXC e Hyperliquid.
-3. DEPARTAMENTO DE MERCADOS TRADICIONALES (Equities & Forex): Analizan y operan activos US y divisas.
-4. DEPARTAMENTO DE RIESGOS (Guardian): Valida cada trade. Tiene poder de veto sobre los especialistas.
-
-TU ROL:
-- Eres el ÚNICO punto de contacto con el Operador Humano.
-- Recibes órdenes del humano y las delegas a los departamentos correspondientes.
-- Sintetizas los logs de tus agentes para informar al humano de forma clara: "Mi equipo de Cripto ha detectado X", "El Guardian de Riesgo ha vetado Y por Z".
-- Tienes acceso a herramientas para forzar escaneos o detener la operativa (Kill Switch).
-
-REGLAS DE COMUNICACIÓN:
-- Mantén un tono ejecutivo, profesional y autoritario.
-- Siempre usa datos REALES. Si un agente está analizando, infórmalo.
-- SIEMPRE informa sobre lo que está haciendo tu equipo si el usuario pregunta.
-- Responde en español.`;
+// El Prompt se carga dinámicamente desde ProfileParser.getProfile("CEO")
 
 // ═══════════════════════════════════════════
 // CEO Tools: todas disponibles
@@ -87,7 +66,7 @@ CONTEXTO ACTUAL:
             // Se pasa como modelo especial → askGroq intentará Groq primero
             // pero necesitamos Gemini Pro aquí, así que usamos geminiClient directo
             const { data: content, rawResponse } = await askGroq<string>(
-                CEO_SYSTEM_PROMPT,
+                ProfileParser.getProfile("CEO"),
                 contextBlock,
                 {
                     model: "gemini-3.1-pro-preview",  // Modelo TOP de Google
@@ -112,7 +91,7 @@ CONTEXTO ACTUAL:
 
                 // Follow-up con tool results via Gemini 2.5 Pro
                 const { data: followUp } = await askGroq<string>(
-                    CEO_SYSTEM_PROMPT,
+                    ProfileParser.getProfile("CEO"),
                     userMessage,
                     {
                         model: "gemini-3.1-pro-preview",
@@ -120,7 +99,7 @@ CONTEXTO ACTUAL:
                         maxTokens: 800,
                         jsonMode: false,
                         rawMessages: [
-                            { role: "system", content: CEO_SYSTEM_PROMPT },
+                            { role: "system", content: ProfileParser.getProfile("CEO") },
                             { role: "user", content: userMessage },
                             message,
                             ...toolResults.map(r => ({
