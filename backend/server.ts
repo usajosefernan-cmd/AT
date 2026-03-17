@@ -397,7 +397,16 @@ app.post("/api/hunter/resume", (_req, res) => {
 });
 
 app.get("/api/hunter/stats", (_req, res) => {
-    res.json({ running: (SwarmAutonomyLoop as any).isRunning });
+    const TelemetryLogger = require("./src/utils/TelemetryLogger").TelemetryLogger;
+    const llmCalls = TelemetryLogger.getTotalCalls();
+
+    res.json({ 
+        running: (SwarmAutonomyLoop as any).isRunning,
+        llmCalls: llmCalls,
+        totalCycles: (SwarmAutonomyLoop as any).getScanCount ? (SwarmAutonomyLoop as any).getScanCount() : 0,
+        anomaliesFound: 0,
+        tradeProposals: 0
+    });
 });
 
 // ═══════════════════════════════════════════
@@ -414,6 +423,14 @@ setInterval(() => {
 
 io.on("connection", (socket) => {
     // Bidirectional chat: frontend sends command → CEO processes → response emitted back
+    // TAREA 2: Retry mechanism para race condition
+    socket.on("request_pixel_assets", () => {
+        if (pixelAssetsCache) {
+            console.log(`📡 [WSS] Enviando Pixel Assets bajo demanda al CLI ${socket.id}`);
+            socket.emit("pixel_assets_loaded", pixelAssetsCache);
+        }
+    });
+
     socket.on("user_command", async (data: { text: string }) => {
         try {
             broadcastAgentLog("ceo", `💬 Comando recibido del Dashboard: "${data.text}"`, "info");

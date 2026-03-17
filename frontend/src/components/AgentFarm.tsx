@@ -162,9 +162,23 @@ const AgentFarm: React.FC = () => {
         socket.on("swarm_heartbeat_activity", handleHeartbeat);
         socket.on("agent_state", handleAgentState);
 
+        // --- TAREA 2: RACE CONDITION FIX (RETRY MECHANISM) ---
+        // Si el servidor emitió el evento antes de que el frontend montara 
+        // este useEffect, lo pedimos de nuevo explícitamente.
+        const retryInterval = setInterval(() => {
+            const currentAssets = useStore.getState().pixelAssets;
+            if (!currentAssets) {
+                console.warn("🔄 [AgentFarm] Assets no recibidos. Solicitando 'request_pixel_assets' al backend...");
+                socket.emit("request_pixel_assets");
+            } else {
+                clearInterval(retryInterval);
+            }
+        }, 3000);
+
         return () => {
             socket.off("swarm_heartbeat_activity", handleHeartbeat);
             socket.off("agent_state", handleAgentState);
+            clearInterval(retryInterval);
         };
     }, [assetsLoaded]);
 

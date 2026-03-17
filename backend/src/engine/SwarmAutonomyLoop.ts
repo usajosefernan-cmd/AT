@@ -27,6 +27,11 @@ export class SwarmAutonomyLoop {
     private static isRunning = false;
     private static firehose: FirehoseManager | null = null;
     private static heartbeatInterval: NodeJS.Timeout | null = null;
+    private static scanCount = 0;
+
+    static getScanCount() {
+        return this.scanCount;
+    }
 
     static start() {
         if (this.isRunning) return;
@@ -194,6 +199,9 @@ export class SwarmAutonomyLoop {
 
         // Emitimos al frontend que hay un latido de enjambre (Animación de Pixel Agents)
         (global as any).io?.emit('swarm_heartbeat_activity', { status: 'working' });
+        
+        // Sumamos un escaneo (latido) al ecosistema global
+        this.scanCount++;
 
         const marketState = JSON.stringify(MarketDataCache.getSnapshot());
 
