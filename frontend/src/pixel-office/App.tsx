@@ -145,7 +145,7 @@ function App() {
   const showMigrationNotice = layoutWasReset && !migrationNoticeDismissed;
 
   const [isDebugMode, setIsDebugMode] = useState(false);
-  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(true);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
   const handleToggleAlwaysShowOverlay = useCallback(

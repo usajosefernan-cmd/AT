@@ -1,12 +1,16 @@
 import { TacticalEvaluation } from './L2_geometry_analyst';
 import { AnomalyAlert } from './L1_macro_screener';
 import { VectorMemoryManager } from '../../memory/VectorMemoryManager';
+import { MarkdownParser } from '../../utils/MarkdownParser';
+import { askGroq } from '../../ai/LLMService';
 
 export interface StrategicDecision {
-    approved: boolean;
-    position_size: number;
-    stop_loss: number;
-    rationale: string;
+    decision: "PASS" | "REJECT";
+    reasoning: string;
+    kelly_percentage_full: number;
+    fractional_kelly_applied: string;
+    allocated_capital_usd: number;
+    recommended_lot_size: number;
 }
 
 // ═══════════════════════════════════════════
@@ -16,7 +20,7 @@ export const AXI_L3_RISK_DEF = {
     type: "function" as const,
     function: {
         name: "evaluate_strategic_risk",
-        description: "El General: IA de Máximo Razonamiento. Revisa la propuesta táctica del Soldado usando Inteligencia Macro, Reglas Axi Select (Cuaderno 1A) y Correlación Dinámica (Cuaderno 1B). Decide si se aprueba el trade, calculando Size via Kelly Criterion y Stop Loss estricto.",
+        description: "L3 Risk Manager. Evalúa la táctica del L2. Decide tamaño de posición, Kelly Críterion y protege el Trailing Drawdown de Axi Select.",
         parameters: {
             type: "object",
             properties: {
@@ -53,40 +57,51 @@ export async function executeAxiL3RiskManager(tacticalEvalJson: string, anomalyD
 }
 
 /**
- * Lógica de simulación del LLM Estratégico Pesado
+ * Invocación al cerebro LLM usando OpenClaw Markdown Identity
  */
-async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: TacticalEvaluation): Promise<StrategicDecision> {
-    console.log(`\x1b[35m[General Riesgo]\x1b[0m Evaluando propuesta táctica (Score: ${tacticalEval.tactical_score}/100)...`);
-
-    // Aquí irá la llamada al LLM pesado (Claude 3.5 Sonnet / Groq 70B)
-    // SYSTEM PROMPT inyectaría Cuadernos 1A y 1B (Axi Select Rules, Markov, Kelly)
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    if (tacticalEval.tactical_score < 75) {
-        return {
-            approved: false,
-            position_size: 0,
-            stop_loss: 0,
-            rationale: "VETO: El informe táctico es débil. Riesgo de ruina innecesario frente a los límites dinámicos (Trailing Drawdown) de Axi Select."
-        };
-    }
+async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: TacticalEvaluation): Promise<StrategicDecision | { error: string }> {
+    console.log(`\x1b[35m[Axi L3 Risk]\x1b[0m Evaluando propuesta táctica con identidad Markdown...`);
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
     const mistakes = await VectorMemoryManager.queryPastMistakes("1_axi_forex", { pattern: tacticalEval.geometry_patterns.join(',') });
     if (mistakes.length >= 3) {
+        console.warn(`\x1b[33m[Axi L3 Risk] VETO Automático:\x1b[0m 3 Fallos históricos consecutivos en '${tacticalEval.geometry_patterns.join(',')}'.`);
         return {
-            approved: false,
-            position_size: 0,
-            stop_loss: 0,
-            rationale: `VETO (Protección Evolutiva): La memoria histórica indica que fallamos ${mistakes.length} veces seguidas operando este mismo patrón. Reduciendo riesgo a 0 para proteger Drawdown.`
+            decision: "REJECT",
+            reasoning: `VETO (Protección Evolutiva): La memoria histórica indica que fallamos ${mistakes.length} veces seguidas operando este mismo patrón. Reduciendo riesgo a 0 para proteger Drawdown.`,
+            kelly_percentage_full: 0,
+            fractional_kelly_applied: "0",
+            allocated_capital_usd: 0,
+            recommended_lot_size: 0
         };
     }
 
-    const sl = alert.triggerPrice * 0.995;
-    return {
-        approved: true,
-        position_size: 1.25, // Kelly fractional
-        stop_loss: parseFloat(sl.toFixed(5)),
-        rationale: `APROBADO. Condiciones de régimen estables (Markov-switching). Confluencia táctica: '${tacticalEval.geometry_patterns.join(',')}'. Kelly Criterion asigna 1.25% para proteger Trailing Drawdown de Axi Select.`
-    };
+    // 1. Extraer la Mente / Conocimiento Ontológico
+    const systemPrompt = MarkdownParser.getSkillContext("1_axi_forex/L3_Strategic_Risk");
+
+    // 2. Componer el mensaje al LLM
+    const userPrompt = `
+EVALUACIÓN ESTRATÉGICA REQUERIDA (AXI SELECT)
+---------------------------------------------
+ANOMALÍA L1:
+${JSON.stringify(alert, null, 2)}
+
+ANÁLISIS TÁCTICO L2:
+${JSON.stringify(tacticalEval, null, 2)}
+
+Aplica tu conocimiento y reglas de Kelly/Trailing Drawdown para emitir el veredicto final en JSON estricto.
+`;
+
+    // 3. Llamar a Groq (Llama 3.3 70B es ideal para L3 reasoning)
+    const result = await askGroq<StrategicDecision>(
+        systemPrompt,
+        userPrompt,
+        {
+            model: "llama-3.3-70b-versatile",
+            jsonMode: true,
+            temperature: 0.1 // Baja temperatura para decisiones de riesgo frías
+        }
+    );
+
+    return result.data;
 }

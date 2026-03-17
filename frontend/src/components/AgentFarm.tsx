@@ -136,6 +136,13 @@ const AgentFarm: React.FC = () => {
             if (data.agent_id === "l3_small_caps") id = 5;
             if (data.agent_id === "l3_forex") id = 6;
 
+            // SINCRONIZACIÓN CON ZUSTAND (El Estado Global)
+            useStore.getState().updateAgent(data.agent_id, {
+                status: data.status,
+                action: data.action || "Esperando Oportunidades..."
+            });
+
+            // SINCRONIZACIÓN VISUAL (Motor Gráfico)
             if (data.status === "active") {
                 dispatch({
                     type: "agentToolStart",
