@@ -98,6 +98,24 @@ async function internalMemeRiskEvaluation(alert: MemeSpikeAlert, narrativeEval: 
         // Memoria no disponible, continuar
     }
 
+    // --- PARCHES L5 (Quantitative Researcher) ---
+    try {
+        const l5Patches = await VectorMemoryManager.queryPolicyPatches("3_memecoins");
+        for (const patch of l5Patches) {
+            if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
+                (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {
+                return {
+                    approved: false,
+                    size_usd: 0,
+                    stop_loss: 0,
+                    rationale: `VETO (L5 Patch - ${patch.severity}): ${patch.directive}`
+                };
+            }
+        }
+    } catch (e) {
+        // L5 patches no disponibles
+    }
+
     // Calcular posición desde reglas del mercado memecoins
     const accountEquity = 10000;
     const sizeUsd = Math.max(25, Math.round((accountEquity * maxPositionPct) / 100));

@@ -84,6 +84,27 @@ async function internalPortfolioManagerEvaluation(alert: GapAlert, vwapEval: VWA
         rationalePrefix = `APROBADO CON REDUCCIÓN (Protección Evolutiva). La memoria refleja ${mistakes.length} fallos recientes en "${vwapEval.gap_classification}". Position sizing reducido al ${approvedSize}% Equity.`;
     }
 
+    // --- PARCHES L5 (Quantitative Researcher) ---
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches("4_equities_large");
+    for (const patch of l5Patches) {
+        if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
+            (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {
+            return {
+                approved: false,
+                size_pct_equity: 0,
+                use_bracket_order: false,
+                take_profit: 0,
+                stop_loss: 0,
+                rationale: `RECHAZADO (L5 Patch - ${patch.severity}): ${patch.directive}`
+            };
+        }
+        // Parches no-VETO aún reducen sizing un 20% como precaución
+        if (patch.patch_type === 'SIZING_ADJUSTMENT') {
+            approvedSize *= 0.8;
+            rationalePrefix += ` [L5: sizing reducido 20% por ${patch.directive.substring(0, 50)}]`;
+        }
+    }
+
     // APROBACIÓN: Dimensionamiento Conservador (0.5% del Equity para Equities USA)
     const currentPrice = alert.intraday_candles[alert.intraday_candles.length - 1];
     

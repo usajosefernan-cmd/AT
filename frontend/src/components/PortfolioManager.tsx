@@ -189,8 +189,8 @@ const PortfolioManager: React.FC = () => {
                                             <span className="text-[9px] font-black text-[#8a95a7] uppercase tracking-widest">
                                                 {pos.openedBy === 'memecoin_sniper' ? 'SNIPER' : 
                                                  pos.openedBy === 'crypto_perp' ? 'PERP' : 
-                                                 pos.openedBy === 'equities_analyst' ? 'EQUITY' : 
-                                                 pos.openedBy === 'forex_macro' ? 'FOREX' : 
+                                                 pos.openedBy === 'equities_analyst' ? 'TRAD FREE' : 
+                                                 pos.openedBy === 'forex_macro' ? 'AXI SELECT' : 
                                                  pos.openedBy === 'ceo' ? 'CEO' : 'SCANNER'}
                                             </span>
                                         </td>

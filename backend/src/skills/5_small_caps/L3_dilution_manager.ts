@@ -82,6 +82,25 @@ async function internalDilutionEvaluation(alert: SmallCapAlert, catalystEval: Ca
         rationalePrefix = `APROBADO CON REDUCCIÓN (Protección Evolutiva). Riesgo histórico masivo tras ${mistakes.length} fallos en "${catalystEval.setup_classification}". Capital fragmentado al 50%.`;
     }
 
+    // --- PARCHES L5 (Quantitative Researcher) ---
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches("5_small_caps");
+    for (const patch of l5Patches) {
+        if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
+            (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {
+            return {
+                approved: false,
+                size_usd: 0,
+                trailing_stop_pct: 0,
+                filing_warnings: [],
+                rationale: `RECHAZADO (L5 Patch - ${patch.severity}): ${patch.directive}`
+            };
+        }
+        if (patch.patch_type === 'SIZING_ADJUSTMENT') {
+            riskAmountUsd = Math.max(10, riskAmountUsd * 0.7);
+            rationalePrefix += ` [L5: sizing reducido 30%]`;
+        }
+    }
+
     // APROBACIÓN con Cortafuegos SEC Filings
     // Simulamos que encontramos un filing S-3 antiguo pero sin acción inminente.
     const trailingStopPct = 5.0; // 5% trailing, deben respirar pero cortar rápido

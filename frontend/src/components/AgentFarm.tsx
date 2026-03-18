@@ -20,11 +20,11 @@ function dispatch(payload: Record<string, unknown>) {
 
 const AGENT_META: Record<number, { palette: number; folderName: string }> = {
     1: { palette: 0, folderName: "CEO" },
-    2: { palette: 1, folderName: "Crypto L3" },
-    3: { palette: 2, folderName: "Memes L3" },
-    4: { palette: 3, folderName: "Equities L3" },
+    2: { palette: 1, folderName: "Cripto L3" },
+    3: { palette: 2, folderName: "Meme L3" },
+    4: { palette: 3, folderName: "Trad Free L3" },
     5: { palette: 4, folderName: "SmallCaps L3" },
-    6: { palette: 5, folderName: "Forex L3" },
+    6: { palette: 5, folderName: "Axi Select L3" },
 };
 
 const AgentFarm: React.FC = () => {

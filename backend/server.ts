@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { broadcastAgentState, broadcastAgentLog, _setIoInstance } from "./src/utils/SwarmEvents";
 import { WebSocketManager, MarketTick, OHLCCandle } from "./src/utils/WebSocketManager";
 import { PaperExecutionEngine } from "./src/engine/PaperExecutionEngine";
+import { CronOrchestrator } from "./src/engine/CronOrchestrator";
 import { AILoop } from "./src/engine/AILoop";
 import { ProfileParser } from "./src/agents/ProfileParser";
 import { TelegramManager } from "./src/utils/TelegramManager";
@@ -91,9 +92,13 @@ _setIoInstance(io);
 const wsManager = new WebSocketManager();
 
 // ═══════════════════════════════════════════
-// 4. Paper Execution Engine
+// 4. Paper Execution Engine & Institutional Clocks
 // ═══════════════════════════════════════════
 const paperEngine = new PaperExecutionEngine();
+
+// Iniciar los Cron Jobs (L4-B, Telemetría L5) 
+const cronOrchestrator = new CronOrchestrator(paperEngine);
+
 
 // ═══════════════════════════════════════════
 // 5. Telegram Bot
@@ -354,6 +359,53 @@ app.post("/api/config/risk", async (req, res) => {
                 .then(({ error }) => { if (error) console.error('[Supabase] market_* save error:', error); });
         }
         res.json({ success: true, rules: AXI_SELECT_RULES, markets: MARKET_RULES });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// ═══ ECOSYSTEM PROFILES — Named config presets per market ═══
+app.get("/api/config/profiles/:ecosystem", async (req, res) => {
+    try {
+        const eco = req.params.ecosystem;
+        const prefix = `eco_profile__${eco}__`;
+        const { data, error } = await supabase
+            .from("system_config")
+            .select("*")
+            .like("key", `${prefix}%`);
+        if (error) return res.json({ success: true, profiles: [] });
+        const profiles = (data || []).map(row => ({
+            name: row.key.replace(prefix, ""),
+            data: JSON.parse(row.value || "{}"),
+        }));
+        res.json({ success: true, profiles });
+    } catch (error: any) {
+        res.json({ success: true, profiles: [] });
+    }
+});
+
+app.post("/api/config/profiles", async (req, res) => {
+    try {
+        const { ecosystem, name, data } = req.body;
+        if (!ecosystem || !name) return res.status(400).json({ error: "ecosystem and name required" });
+        const key = `eco_profile__${ecosystem}__${name}`;
+        const { error } = await supabase
+            .from("system_config")
+            .upsert({ key, value: JSON.stringify(data), updated_at: new Date().toISOString() }, { onConflict: "key" });
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete("/api/config/profiles", async (req, res) => {
+    try {
+        const { ecosystem, name } = req.body;
+        if (!ecosystem || !name) return res.status(400).json({ error: "ecosystem and name required" });
+        const key = `eco_profile__${ecosystem}__${name}`;
+        const { error } = await supabase.from("system_config").delete().eq("key", key);
+        if (error) throw error;
+        res.json({ success: true });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
@@ -683,6 +735,7 @@ server.listen(PORT, "0.0.0.0", async () => {
 
 process.on("SIGTERM", () => {
     stopSwarm();
+    cronOrchestrator.destroy();
     wsManager.disconnectAll();
     server.close();
 });

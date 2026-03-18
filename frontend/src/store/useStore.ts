@@ -18,10 +18,10 @@ export interface DeskConfig {
 
 export const DESKS: DeskConfig[] = [
     { id: "overview", label: "GLOBAL", exchange: "ALL", symbols: ["BTC", "ETH", "SOL", "DOGE", "AAPL", "NVDA", "EURUSD"], color: "#4a6cf7", icon: "🌐" },
-    { id: "crypto", label: "CRIPTOMONEDAS", exchange: "HYPERLIQUID", symbols: ["BTC", "ETH", "SOL", "LINK", "ARB", "AVAX", "WIF", "ONDO", "SUI"], color: "#a78bfa", icon: "₿" },
-    { id: "memecoins", label: "SNIPER MEME", exchange: "MEXC", symbols: ["PEPEUSDT", "DOGEUSDT", "SHIBUSDT", "WIFUSDT", "BONKUSDT", "FLOKIUSDT", "BOMEUSDT", "POPCATUSDT"], color: "#f472b6", icon: "🐸" },
-    { id: "equities", label: "ACCIONES US", exchange: "ALPACA", symbols: ["AAPL", "TSLA", "SPY", "NVDA", "MSFT", "GOOGL", "AMZN", "META"], color: "#22c55e", icon: "📊" },
-    { id: "forex", label: "FOREX / DIVISAS", exchange: "AXI", symbols: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "GBPJPY", "AUDUSD", "USDCHF"], color: "#f59e0b", icon: "💱" },
+    { id: "crypto", label: "CRIPTO", exchange: "HYPERLIQUID", symbols: ["BTC", "ETH", "SOL", "LINK", "ARB", "AVAX", "WIF", "ONDO", "SUI"], color: "#a78bfa", icon: "₿" },
+    { id: "memecoins", label: "MEME", exchange: "MEXC", symbols: ["PEPEUSDT", "DOGEUSDT", "SHIBUSDT", "WIFUSDT", "BONKUSDT", "FLOKIUSDT", "BOMEUSDT", "POPCATUSDT"], color: "#f472b6", icon: "🐸" },
+    { id: "equities", label: "TRADICIONAL FREE", exchange: "ALPACA", symbols: ["AAPL", "TSLA", "SPY", "NVDA", "MSFT", "GOOGL", "AMZN", "META"], color: "#22c55e", icon: "📊" },
+    { id: "forex", label: "AXI SELECT", exchange: "AXI", symbols: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "GBPJPY", "AUDUSD", "USDCHF"], color: "#f59e0b", icon: "💱" },
     { id: "admin", label: "ADMINISTRACIÓN", exchange: "", symbols: [], color: "#ef4444", icon: "⚙️" },
 ];
 
@@ -116,44 +116,44 @@ export const useStore = create<AppStore>((set, get) => ({
         },
         l3_axi: { 
             id: "l3_axi", 
-            name: "L3 AXI FOREX", 
-            role: "DIRECTOR DE RIESGOS FOREX", 
+            name: "L3 AXI SELECT", 
+            role: "DIRECTOR AXI PRO FIRM", 
             status: "idle", 
             action: "MONITORIZANDO", 
-            mission: "GESTIONAR LA EXPOSICIÓN EN MERCADOS FX MAYORES (EURUSD, GBPUSD, JPY) SEGÚN PARÁMETROS MACRO.",
+            mission: "GESTIONAR LA EXPOSICIÓN EN MERCADOS FX MAYORES, COMMODITIES, ÍNDICES, ACCIONES. ESTRICTAS REGLAS DE PROP FIRM.",
             personality: "FRÍO, CALCULADOR, FUNDAMENTAL",
             color: "#f59e0b",
             timestamp: Date.now() 
         },
         l3_crypto: { 
             id: "l3_crypto", 
-            name: "L3 CRYPTO MAJORS", 
+            name: "L3 CRIPTO", 
             role: "DIRECTOR DE RIESGOS CRIPTO", 
             status: "idle", 
             action: "MONITORIZANDO", 
-            mission: "CONTROLAR EL FLUJO EN PERPETUOS DE BTC/ETH/SOL. OPTIMIZAR LIQUIDACIONES.",
+            mission: "CONTROLAR EL FLUJO EN PERPETUOS Y SPOT (HYPERLIQUID, ASTER). OPTIMIZAR LIQUIDACIONES.",
             personality: "AGRESIVO, MATEMÁTICO, VELOZ",
             color: "#6366f1",
             timestamp: Date.now() 
         },
         l3_memes: { 
             id: "l3_memes", 
-            name: "L3 MEMECOINS", 
+            name: "L3 MEME", 
             role: "DIRECTOR DE RIESGOS DGEN", 
             status: "idle", 
             action: "MONITORIZANDO", 
-            mission: "ASIGNAR CAPITAL DE ALTO RIESGO A ACTIVOS HIPER-VOLÁTILES SIN COMPROMETER LA CUENTA PRINCIPAL.",
+            mission: "PUMP AND DUMPS, AIRDROPS, IPOS EN MEXC. ALTO RIESGO, ACTIVOS HIPER-VOLÁTILES.",
             personality: "OPORTUNISTA, CAÓTICO, IMPLACABLE",
             color: "#f472b6",
             timestamp: Date.now() 
         },
         l3_equities: { 
             id: "l3_equities", 
-            name: "L3 EQUITIES", 
-            role: "DIRECTOR DE RIESGOS ACCIONES", 
+            name: "L3 TRADICIONAL FREE", 
+            role: "DIRECTOR TRADICIONAL FREE", 
             status: "idle", 
             action: "STANDBY", 
-            mission: "OPERATIVIDAD SOBRE ACCIONES REGULADAS US (LARGE CAPS). RESPETO ESTRICTO AL VWAP Y HORARIOS (RTH).",
+            mission: "OPERATIVIDAD SOBRE ACTIVOS TRADICIONALES EN ALPACA. LIBERTAD TOTAL (SIN PROP FIRM RULES).",
             personality: "MÓDICO, INSTITUCIONAL, PACIENTE",
             color: "#10b981",
             timestamp: Date.now() 
@@ -161,10 +161,10 @@ export const useStore = create<AppStore>((set, get) => ({
         l3_small_caps: { 
             id: "l3_small_caps", 
             name: "L3 SMALL CAPS", 
-            role: "DIRECTOR DE RIESGOS SMALL CAPS", 
+            role: "DIRECTOR SMALL CAPS", 
             status: "idle", 
             action: "MONITORIZANDO", 
-            mission: "SCALPEAR EVENTOS DE EXPANSIÓN CON PRECAUCIÓN ANTE DILUCIÓN Y OFFERINGS. MANTENER DRAWDOWN AL MÍNIMO.",
+            mission: "SCALPEAR EVENTOS INTRA-DÍA US MICRO CAPITALIZACIÓN EN ALPACA (PUMP & DUMPS, GAPPERS, DILUCIÓN).",
             personality: "CAUTO, PARANOICO, EFICIENTE",
             color: "#ef4444",
             timestamp: Date.now() 

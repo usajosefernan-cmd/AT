@@ -78,6 +78,23 @@ async function internalRiskEvaluation(obEval: any, flowData: any): Promise<Crypt
         // Memoria no disponible, continuar sin ella
     }
 
+    // --- PARCHES L5 (Quantitative Researcher) ---
+    try {
+        const l5Patches = await VectorMemoryManager.queryPolicyPatches("2_crypto_majors");
+        for (const patch of l5Patches) {
+            if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
+                (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {
+                return {
+                    approved: false,
+                    leverage: 1,
+                    size_usd: 0,
+                    rationale: `VETO (L5 Patch - ${patch.severity}): ${patch.directive}`
+                };
+            }
+        }
+    } catch (e) {
+        // L5 patches no disponibles, continuar
+    }
     // Calcular tamaño de posición basado en reglas del mercado crypto
     const accountEquity = 10000;
     const maxSizeUsd = (accountEquity * maxPositionPct) / 100;

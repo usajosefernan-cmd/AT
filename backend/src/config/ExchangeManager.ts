@@ -213,11 +213,9 @@ export interface MarketRuleSet {
     maxHoldMinutes: number | null; // null = sin límite
     description: string;
     // ── Ecosystem-level config (persisted to Supabase) ──
-    exchange: string;             // e.g. 'Hyperliquid', 'MEXC', 'Alpaca', 'Axi'
     mode: 'paper' | 'live';      // paper trading vs live execution
-    apiKey: string;               // exchange API key for this ecosystem
-    apiSecret: string;            // exchange API secret
     enabled: boolean;             // toggle ecosystem on/off
+    credentials: Record<string, string>; // stores customized API keys, secrets, WSS URLs, etc.
 }
 
 export const MARKET_RULES: Record<string, MarketRuleSet> = {
@@ -227,12 +225,10 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxRiskPerTradePct: 3,
         style: 'swing',
         maxHoldMinutes: null,
-        description: 'Cripto Majors (BTC, ETH, SOL...) — Perps con leverage',
-        exchange: 'Hyperliquid',
+        description: 'CRIPTO — Todas las criptos y pares en Hyperliquid y aster.exchange (y expansible). Alto leverage.',
         mode: 'paper',
-        apiKey: '',
-        apiSecret: '',
         enabled: true,
+        credentials: { hl_wss: "wss://api.hyperliquid.xyz/ws", aster_wss: "wss://api.aster.exchange/ws" },
     },
     memecoins: {
         maxLeverage: 1,
@@ -240,12 +236,10 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxRiskPerTradePct: 2,
         style: 'scalping',
         maxHoldMinutes: 60,
-        description: 'Sniper Meme (DOGE, SHIB, etc.) — Spot, intraday rápido',
-        exchange: 'MEXC',
+        description: 'MEME — Pump and dump (MEXC). Investigación de proyectos, IPOs, airdrops.',
         mode: 'paper',
-        apiKey: '',
-        apiSecret: '',
         enabled: true,
+        credentials: { mexc_wss: "wss://wbs.mexc.com/ws" },
     },
     equities: {
         maxLeverage: 1,
@@ -253,12 +247,10 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxRiskPerTradePct: 3,
         style: 'position',
         maxHoldMinutes: null,
-        description: 'Acciones US (AAPL, TSLA, SPY) — Sin leverage, swing/position',
-        exchange: 'Alpaca',
+        description: 'TRADICIONAL FREE — Forex, comodities, acciones, índices libres en Alpaca. Sin reglas estrictas.',
         mode: 'paper',
-        apiKey: '',
-        apiSecret: '',
         enabled: true,
+        credentials: { alpaca_wss: "wss://stream.data.alpaca.markets/v2/iex" },
     },
     forex: {
         maxLeverage: 30,
@@ -266,12 +258,10 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxRiskPerTradePct: 2,
         style: 'intraday',
         maxHoldMinutes: 480,
-        description: 'Forex/Divisas (EUR/USD, XAU) — Prop firm Axi, leverage alto',
-        exchange: 'Axi',
+        description: 'AXI SELECT — Pares de Axi (forex, commodities, acciones, índices) bajo reglas estrictas de Prop Firm.',
         mode: 'paper',
-        apiKey: '',
-        apiSecret: '',
         enabled: true,
+        credentials: { axi_server: "AxiTrader-Live", sl_bps: "15", tp_bps: "45" },
     },
     small_caps: {
         maxLeverage: 1,
@@ -279,12 +269,10 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxRiskPerTradePct: 2,
         style: 'scalping',
         maxHoldMinutes: 30,
-        description: 'Small/Micro Caps — Sin leverage, intraday ultra-rápido',
-        exchange: 'Alpaca',
+        description: 'SMALL CAPS — Acciones US baja capitalización (Alpaca). Gapper, pump and dump, dilución. Intradía.',
         mode: 'paper',
-        apiKey: '',
-        apiSecret: '',
         enabled: true,
+        credentials: { alpaca_sc_wss: "wss://stream.data.alpaca.markets/v2/sip" },
     },
 };
 
@@ -311,11 +299,13 @@ export function updateRule(key: string, value: any) {
             if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
             if (field === 'balance') (MARKET_RULES[market] as any).initialBalance = numVal;
             // ── New ecosystem-level fields ──
-            if (field === 'exchange') MARKET_RULES[market].exchange = String(value);
             if (field === 'mode') MARKET_RULES[market].mode = value === 'live' ? 'live' : 'paper';
-            if (field === 'api_key') MARKET_RULES[market].apiKey = String(value);
-            if (field === 'api_secret') MARKET_RULES[market].apiSecret = String(value);
-            if (field === 'enabled') MARKET_RULES[market].enabled = value === true || value === 'true' || value === '1';
+            else if (field === 'enabled') MARKET_RULES[market].enabled = value === true || value === 'true' || value === '1';
+            else if (!['leverage', 'position_pct', 'risk_per_trade', 'hold_minutes', 'balance'].includes(field)) {
+                // If it's none of the standard numerical fields or core flags, it's a dynamic credential
+                if (!MARKET_RULES[market].credentials) MARKET_RULES[market].credentials = {};
+                MARKET_RULES[market].credentials[field] = String(value);
+            }
             console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
             return;
         }

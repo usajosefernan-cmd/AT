@@ -2,6 +2,9 @@ import EventEmitter from "events";
 import { MarketTick } from "../utils/WebSocketManager";
 import { broadcastAgentState } from "../utils/SwarmEvents";
 import { getAllPaperAccounts, getOpenPaperPositions, savePaperPosition, updatePaperBalance } from "../utils/supabaseClient";
+import { L4AExecutionEngine } from "./L4A_execution_engine";
+import { PostTradeLogger } from "./PostTradeLogger";
+import { L4BPortfolioStrategist } from "./L4B_portfolio_strategist";
 
 /**
  * Representa una orden virtual abierta en Paper Trading.
@@ -59,6 +62,8 @@ export function inferMarketId(exchange?: string): string {
 export class PaperExecutionEngine extends EventEmitter {
     public accounts: Record<string, PaperAccount> = {};
     public limits: Record<string, { dailyDD: number, totalDD: number }> = {};
+    public l4a: L4AExecutionEngine;
+    public l4b: L4BPortfolioStrategist;
 
     private lastDailyAlertTime = 0;
     private lastTotalAlertTime = 0;
@@ -79,7 +84,16 @@ export class PaperExecutionEngine extends EventEmitter {
             this.limits[m] = { dailyDD: 5.0, totalDD: 10.0 };
         }
 
-        console.log(`[PaperEngine] Initializing Multi-Market Virtual Accounts.`);
+        // L4-A: Execution Engine — gestión algorítmica de posiciones vivas
+        this.l4a = new L4AExecutionEngine(this);
+
+        // Telemetría: Registra cada cierre para el L5 Quantitative Researcher
+        new PostTradeLogger(this);
+
+        // L4-B: Portfolio Strategist — auditoría macro asíncrona con override jerárquico
+        this.l4b = new L4BPortfolioStrategist(this);
+
+        console.log(`[PaperEngine] Initializing Multi-Market Virtual Accounts + L4-A/L4-B Engine + Telemetry.`);
         this.loadAllStatesFromSupabase().catch(err => console.error("[PaperEngine] Init Error:", err));
     }
 
@@ -238,6 +252,9 @@ export class PaperExecutionEngine extends EventEmitter {
                     currentPrice: tick.price,
                     entryPrice: pos.entryPrice,
                 });
+
+                // ⚡ L4-A: Gestión dinámica (BE, Partial TP, Trailing) ANTES de checks SL/TP
+                this.l4a.onTick(id, tick.price);
 
                 if (pos.trailingStop && pos.trailingStop.active) {
                     if (pos.side === 'LONG') {

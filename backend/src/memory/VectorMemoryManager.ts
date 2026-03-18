@@ -89,4 +89,46 @@ export class VectorMemoryManager {
             return [];
         }
     }
+
+    /**
+     * Consulta parches de política L5 para un ecosistema.
+     * Devuelve directivas textuales que L3 inyecta en su prompt.
+     * L5 almacena parches con trade_id = 'L5_PATCH_...' y context.type = 'policy_patch'.
+     */
+    static async queryPolicyPatches(ecosystem: string): Promise<{ directive: string; severity: string; patch_type: string }[]> {
+        try {
+            const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+
+            const { data, error } = await supabase
+                .from('trade_memory')
+                .select('context, rationale')
+                .eq('ecosystem', ecosystem)
+                .like('trade_id', 'L5_PATCH_%')
+                .gte('timestamp', thirtyDaysAgo)
+                .order('timestamp', { ascending: false })
+                .limit(10);
+
+            if (error) {
+                console.error(`[L5 Patch Query Error]`, error);
+                return [];
+            }
+
+            const patches = (data || [])
+                .filter((row: any) => row.context?.type === 'policy_patch')
+                .map((row: any) => ({
+                    directive: row.context.directive || row.rationale,
+                    severity: row.context.severity || 'MEDIUM',
+                    patch_type: row.context.patch_type || 'UNKNOWN',
+                }));
+
+            if (patches.length > 0) {
+                console.log(`[L5 Patches] ${patches.length} active patches for ${ecosystem}`);
+            }
+
+            return patches;
+        } catch (err) {
+            console.error(`[L5 Patch Query Exception]`, err);
+            return [];
+        }
+    }
 }

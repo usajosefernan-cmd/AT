@@ -76,10 +76,32 @@ async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: Ta
         };
     }
 
+    // --- PARCHES L5 (Quantitative Researcher) ---
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches("1_axi_forex");
+    const criticalPatches = l5Patches.filter(p => p.severity === 'CRITICAL' || p.severity === 'HIGH');
+    // VETO automático si algún parche CRITICAL afecta a los setups actuales
+    for (const patch of criticalPatches) {
+        if (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING') {
+            console.warn(`\x1b[33m[Axi L3 Risk] VETO L5:\x1b[0m [${patch.severity}] ${patch.directive.substring(0, 100)}`);
+            return {
+                decision: "REJECT",
+                reasoning: `VETO (L5 Policy Patch - ${patch.severity}): ${patch.directive}`,
+                kelly_percentage_full: 0,
+                fractional_kelly_applied: "0",
+                allocated_capital_usd: 0,
+                recommended_lot_size: 0
+            };
+        }
+    }
+
     // 1. Extraer la Mente / Conocimiento Ontológico
     const systemPrompt = MarkdownParser.getSkillContext("1_axi_forex/L3_Strategic_Risk");
 
-    // 2. Componer el mensaje al LLM
+    // 2. Componer el mensaje al LLM (incluyendo parches L5 como contexto)
+    const l5Context = l5Patches.length > 0
+        ? `\n\nDIRECTIVAS L5 (QUANTITATIVE RESEARCHER — Parches de Política Activos):\n${l5Patches.map(p => `- [${p.severity}][${p.patch_type}] ${p.directive}`).join('\n')}\n`
+        : '';
+
     const userPrompt = `
 EVALUACIÓN ESTRATÉGICA REQUERIDA (AXI SELECT)
 ---------------------------------------------
@@ -88,7 +110,7 @@ ${JSON.stringify(alert, null, 2)}
 
 ANÁLISIS TÁCTICO L2:
 ${JSON.stringify(tacticalEval, null, 2)}
-
+${l5Context}
 Aplica tu conocimiento y reglas de Kelly/Trailing Drawdown para emitir el veredicto final en JSON estricto.
 `;
 

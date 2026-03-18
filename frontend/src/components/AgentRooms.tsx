@@ -19,11 +19,11 @@ interface MarketRoom {
 }
 
 const ROOMS: MarketRoom[] = [
-    { id: "crypto", label: "CRIPTOMONEDAS", icon: "₿", color: "#a78bfa", exchange: "HYPERLIQUID", marketKey: "crypto", l1: "Sentinel Flow", l2: "Orderbook Analyst", l3: "Crypto Director" },
-    { id: "memecoins", label: "MEMECOINS", icon: "🐸", color: "#f472b6", exchange: "MEXC", marketKey: "memecoins", l1: "Momentum Screener", l2: "Narrative Analyst", l3: "Meme Director" },
-    { id: "equities", label: "ACCIONES US", icon: "📊", color: "#22c55e", exchange: "ALPACA", marketKey: "equities", l1: "Volume Scanner", l2: "Catalyst Analyst", l3: "Equities Director" },
-    { id: "forex", label: "FOREX / ORO", icon: "💱", color: "#f59e0b", exchange: "AXI", marketKey: "forex", l1: "Macro Screener", l2: "Geometry Analyst", l3: "Forex Director" },
-    { id: "smallcaps", label: "SMALL CAPS", icon: "🔬", color: "#06b6d4", exchange: "ALPACA", marketKey: "small_caps", l1: "Halt Screener", l2: "Catalyst Analyst", l3: "Dilution Mgr" },
+    { id: "crypto", label: "CRIPTO", icon: "₿", color: "#a78bfa", exchange: "HYPERLIQUID/ASTER", marketKey: "crypto", l1: "Sentinel Flow", l2: "Orderbook Analyst", l3: "L3 CRIPTO" },
+    { id: "memecoins", label: "MEME", icon: "🐸", color: "#f472b6", exchange: "MEXC", marketKey: "memecoins", l1: "Momentum Screener", l2: "Narrative Analyst", l3: "L3 MEME" },
+    { id: "equities", label: "TRADICIONAL FREE", icon: "📊", color: "#22c55e", exchange: "ALPACA", marketKey: "equities", l1: "Volume Scanner", l2: "Catalyst Analyst", l3: "L3 TRAD FREE" },
+    { id: "forex", label: "AXI SELECT", icon: "💱", color: "#f59e0b", exchange: "AXI P.FIRM", marketKey: "forex", l1: "Macro Screener", l2: "Geometry Analyst", l3: "L3 AXI SELECT" },
+    { id: "smallcaps", label: "SMALL CAPS", icon: "🔬", color: "#06b6d4", exchange: "ALPACA", marketKey: "small_caps", l1: "Halt Screener", l2: "Catalyst Analyst", l3: "L3 SMALL CAPS" },
 ];
 
 const statusColors: Record<string, string> = {
