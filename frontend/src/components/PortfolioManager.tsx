@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { useStore, PaperPosition, getSocket } from "../store/useStore";
 import {
     Table,
@@ -18,7 +18,8 @@ const PortfolioManager: React.FC = () => {
     const positions = useStore((s) => s.activePositions) || [];
     const account = useStore((s) => s.account);
     const equityCurve = useStore((s) => s.equityCurve);
-    const latestPrices = useStore((s) => s.marketData);
+    // ⚡ REMOVED: latestPrices subscription was causing re-renders on every tick
+    // If live prices are needed here, use a granular per-symbol selector instead
 
     const [infoModal, setInfoModal] = useState<PaperPosition | null>(null);
 
@@ -154,7 +155,7 @@ const PortfolioManager: React.FC = () => {
                             </tr>
                         ) : (
                             positions.map((pos) => {
-                                const live = latestPrices[pos.symbol]?.price || pos.entryPrice;
+                                const live = pos.entryPrice; // Live PnL comes from paper_pnl socket updates
                                 const isProfit = pos.unrealizedPnl >= 0;
                                 return (
                                     <tr key={pos.id} className="group hover:bg-[#111622] transition-colors duration-150">
@@ -263,7 +264,7 @@ const PortfolioManager: React.FC = () => {
             {/* Info Modal */}
             {infoModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-[#0b0e14] border border-[#1a1f2e] rounded-xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[80vh] animate-slide-in">
+                    <div className="bg-[#0b0e14] border border-[#1a1f2e] rounded-xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] animate-slide-in">
                         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1a1f2e] bg-[#0d1117] rounded-t-xl">
                             <div className="flex items-center gap-3 text-[#4a6cf7]">
                                 <div className="p-1.5 bg-[#4a6cf7]/10 rounded border border-[#4a6cf7]/20">
@@ -360,4 +361,4 @@ const PortfolioManager: React.FC = () => {
     );
 };
 
-export default PortfolioManager;
+export default memo(PortfolioManager);

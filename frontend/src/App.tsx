@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, memo } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate, Link } from "react-router-dom";
 import { initSocket, useStore, DESKS } from "./store/useStore";
 import { Login } from "./components/Login";
@@ -25,14 +25,96 @@ import {
 import CommandChat from "./components/CommandChat";
 import { supabase } from "./utils/supabaseClient";
 
+// ⚡ Isolated clock — only re-renders itself, not the whole app
+const LiveClock = memo(() => {
+    const [time, setTime] = useState(new Date());
+    useEffect(() => {
+        const t = setInterval(() => setTime(new Date()), 1000);
+        return () => clearInterval(t);
+    }, []);
+    return (
+        <div className="flex items-center gap-2 text-[9px] font-mono bg-[#111622] px-3 py-1.5 rounded border border-[#1a1f2e]">
+            <Clock size={10} className="text-[#4a6cf7]" />
+            <span className="text-[#c9d1d9] tracking-widest uppercase">{time.toLocaleTimeString('en-US', { hour12: false })}</span>
+        </div>
+    );
+});
+
+// ⚡ Isolated status ribbon — only subscribes to what it needs
+const StatusRibbon = memo(() => {
+    const account = useStore((s) => s.account);
+    const agents = useStore((s) => s.agents);
+    const connected = useStore((s) => s.connected);
+    const killSwitchActive = useStore((s) => s.killSwitchActive);
+
+    const handleKill = async () => {
+        const url = import.meta.env.VITE_API_URL || "http://localhost:8080";
+        await fetch(`${url}/api/killswitch`, { method: "POST" });
+        useStore.getState().setKillSwitch(true);
+    };
+
+    return (
+        <header className="h-12 border-b border-[#1a1f2e] bg-[#0b0e14] flex items-center justify-between px-6 flex-shrink-0 z-40">
+            <div className="flex items-center gap-6">
+                <div className="flex flex-col">
+                    <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest mb-0.5">Estado del Gremio</span>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                            <span className="text-[#3a4555]">EQUIDAD:</span>
+                            <span className="text-white font-bold tabular-nums">${account.equity.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                            <span className="text-[#3a4555]">PROLONGADO:</span>
+                            <span className={`font-bold tabular-nums ${account.totalPnl >= 0 ? "text-[#22c55e]" : "text-[#ef4444]"}`}>
+                                {account.totalPnl >= 0 ? "▲" : "▼"} ${Math.abs(account.totalPnl).toFixed(2)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="w-px h-6 bg-[#1a1f2e]" />
+
+                <div className="flex items-center gap-3">
+                    <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest">Enlace Swarm</span>
+                    <div className="flex gap-1.5">
+                        {Object.entries(agents).map(([id, a]) => (
+                            <div 
+                                key={id} 
+                                title={`${id.toUpperCase()}: ${a.status}`}
+                                className={`w-1.5 h-1.5 rounded-full transition-all ${a.status === 'active' ? 'bg-[#22d3ee] shadow-[0_0_8px_#22d3ee]' : 'bg-[#1a1f2e]'}`} 
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                <LiveClock />
+
+                <button
+                    onClick={handleKill}
+                    className={`flex items-center gap-2 h-8 px-4 rounded font-black text-[9px] transition-all uppercase tracking-widest border ${killSwitchActive
+                        ? "bg-[#ef4444] text-white border-[#ef4444] shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                        : "bg-[#ef4444]/5 text-[#ef4444] border-[#ef4444]/20 hover:bg-[#ef4444] hover:text-white"
+                        }`}
+                >
+                    <ShieldCheck size={12} /> Desactivar Todo
+                </button>
+
+                <div className="w-px h-6 bg-[#1a1f2e]" />
+
+                <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[#22c55e] animate-pulse' : 'bg-[#ef4444]'}`} />
+                     <span className="text-[10px] font-black text-white uppercase tracking-tighter">Motor v1.0</span>
+                </div>
+            </div>
+        </header>
+    );
+});
+
 const App: React.FC = () => {
     const connected = useStore((s) => s.connected);
-    const account = useStore((s) => s.account);
-    const killSwitchActive = useStore((s) => s.killSwitchActive);
-    const agents = useStore((s) => s.agents);
-    const latestPrices = useStore((s) => s.marketData);
 
-    const [time, setTime] = useState(new Date());
     const [session, setSession] = useState<any>(null);
     const [authLoading, setAuthLoading] = useState(true);
     const [chatOpen, setChatOpen] = useState(false);
@@ -41,15 +123,12 @@ const App: React.FC = () => {
     const location = useLocation();
 
     useEffect(() => {
-        // Auth Initial check
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setAuthLoading(false);
-            // Always connect socket — with token if logged in, without if dev mode
             initSocket(session?.access_token);
         });
 
-        // Auth Listener
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             if (session) {
@@ -59,9 +138,7 @@ const App: React.FC = () => {
             }
         });
 
-        const t = setInterval(() => setTime(new Date()), 1000);
         return () => {
-            clearInterval(t);
             subscription.unsubscribe();
         };
     }, []);
@@ -79,12 +156,6 @@ const App: React.FC = () => {
 
     if (!session) return <Login />;
 
-    const handleKill = async () => {
-        const url = import.meta.env.VITE_API_URL || "http://localhost:8080";
-        await fetch(`${url}/api/killswitch`, { method: "POST" });
-        useStore.getState().setKillSwitch(true);
-    };
-
     const handleLogout = async () => {
         await supabase.auth.signOut();
         setSession(null);
@@ -98,10 +169,9 @@ const App: React.FC = () => {
         <div className="h-screen w-screen bg-[#060a10] text-[#c9d1d9] flex overflow-hidden font-sans selection:bg-[#4a6cf7]/30">
 
             {/* ═══════════════════════════════════════════ */}
-            {/* SIDEBAR NAVIGATION — Paginated Structure */}
+            {/* SIDEBAR NAVIGATION */}
             {/* ═══════════════════════════════════════════ */}
             <nav className="w-16 flex-shrink-0 bg-[#0b0e14] border-r border-[#1a1f2e] flex flex-col items-center py-4 gap-4 z-50">
-                {/* Brand Logo */}
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4a6cf7] to-[#a78bfa] flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(74,108,247,0.2)]">
                     <Cpu size={18} className="text-white" />
                 </div>
@@ -112,12 +182,9 @@ const App: React.FC = () => {
                         <span className="text-[8px] font-black uppercase mt-1 tracking-tighter">Trading</span>
                     </Link>
 
-                    <Link to="/agents" className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all group ${isActive('/agents') ? 'bg-[#a78bfa]/10 text-[#a78bfa]' : 'text-[#5a6577] hover:bg-[#111622] hover:text-[#c9d1d9]'}`}>
+                    <Link to="/agents" className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all group relative ${isActive('/agents') ? 'bg-[#a78bfa]/10 text-[#a78bfa]' : 'text-[#5a6577] hover:bg-[#111622] hover:text-[#c9d1d9]'}`}>
                         <Cpu size={20} className={isActive('/agents') ? "drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]" : ""} />
                         <span className="text-[8px] font-black uppercase mt-1 tracking-tighter">Agentes</span>
-                        {Object.values(agents).some(a => a.status === 'active') && (
-                            <div className="absolute top-1 right-1 w-2 h-2 bg-[#22d3ee] rounded-full animate-ping" />
-                        )}
                     </Link>
 
                     <Link to="/settings" className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all group ${isActive('/settings') ? 'bg-[#f59e0b]/10 text-[#f59e0b]' : 'text-[#5a6577] hover:bg-[#111622] hover:text-[#c9d1d9]'}`}>
@@ -127,7 +194,6 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="mt-auto flex flex-col items-center gap-4 pb-2 w-full px-2">
-                    {/* Connection Status */}
                     <div className="flex flex-col items-center gap-1 group relative cursor-help">
                         {connected ? (
                             <Wifi size={14} className="text-[#22c55e] drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
@@ -148,7 +214,6 @@ const App: React.FC = () => {
                     </button>
                 </div>
 
-                {/* Global CEO Chat Toggle (Quick Access) */}
                 <div className="mt-4 pt-4 border-t border-[#1a1f2e] w-full flex justify-center pb-4">
                     <button 
                         onClick={() => setChatOpen(!chatOpen)}
@@ -164,70 +229,11 @@ const App: React.FC = () => {
             {/* ═══════════════════════════════════════════ */}
             <main className="flex-1 flex flex-col min-h-0 bg-[#060a10] relative">
 
-                {/* Status Indicator (Compact) */}
                 <div className={`absolute top-0 left-0 right-0 z-[60] h-0.5 transition-all ${connected ? 'bg-[#22c55e]' : 'bg-[#ef4444] animate-pulse'}`} />
 
-                {/* Global Status Ribbon (Professional Header) */}
-                <header className="h-12 border-b border-[#1a1f2e] bg-[#0b0e14] flex items-center justify-between px-6 flex-shrink-0 z-40">
-                    <div className="flex items-center gap-6">
-                        <div className="flex flex-col">
-                            <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest mb-0.5">Estado del Gremio</span>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2 text-[10px] font-mono">
-                                    <span className="text-[#3a4555]">EQUIDAD:</span>
-                                    <span className="text-white font-bold tabular-nums">${account.equity.toLocaleString()}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px] font-mono">
-                                    <span className="text-[#3a4555]">PROLONGADO:</span>
-                                    <span className={`font-bold tabular-nums ${account.totalPnl >= 0 ? "text-[#22c55e]" : "text-[#ef4444]"}`}>
-                                        {account.totalPnl >= 0 ? "▲" : "▼"} ${Math.abs(account.totalPnl).toFixed(2)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                {/* ⚡ Isolated StatusRibbon — only this re-renders on account/agent changes */}
+                <StatusRibbon />
 
-                        <div className="w-px h-6 bg-[#1a1f2e]" />
-
-                        <div className="flex items-center gap-3">
-                            <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest">Enlace Swarm</span>
-                            <div className="flex gap-1.5">
-                                {Object.entries(agents).map(([id, a]) => (
-                                    <div 
-                                        key={id} 
-                                        title={`${id.toUpperCase()}: ${a.status}`}
-                                        className={`w-1.5 h-1.5 rounded-full transition-all ${a.status === 'active' ? 'bg-[#22d3ee] shadow-[0_0_8px_#22d3ee]' : 'bg-[#1a1f2e]'}`} 
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 text-[9px] font-mono bg-[#111622] px-3 py-1.5 rounded border border-[#1a1f2e]">
-                            <Clock size={10} className="text-[#4a6cf7]" />
-                            <span className="text-[#c9d1d9] tracking-widest uppercase">{time.toLocaleTimeString('en-US', { hour12: false })}</span>
-                        </div>
-
-                        <button
-                            onClick={handleKill}
-                            className={`flex items-center gap-2 h-8 px-4 rounded font-black text-[9px] transition-all uppercase tracking-widest border ${killSwitchActive
-                                ? "bg-[#ef4444] text-white border-[#ef4444] shadow-[0_0_15px_rgba(239,68,68,0.4)]"
-                                : "bg-[#ef4444]/5 text-[#ef4444] border-[#ef4444]/20 hover:bg-[#ef4444] hover:text-white"
-                                }`}
-                        >
-                            <ShieldCheck size={12} /> Desactivar Todo
-                        </button>
-
-                        <div className="w-px h-6 bg-[#1a1f2e]" />
-
-                        <div className="flex items-center gap-2">
-                             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[#22c55e] animate-pulse' : 'bg-[#ef4444]'}`} />
-                             <span className="text-[10px] font-black text-white uppercase tracking-tighter">Motor v1.0</span>
-                        </div>
-                    </div>
-                </header>
-
-                {/* Sub-navigation for Trading Desks (only on /trade) */}
                 {isActive('/trade') && (
                     <div className="h-9 border-b border-[#1a1f2e] bg-[#0b0e14] flex items-center px-4 gap-1 flex-shrink-0 overflow-x-auto no-scrollbar">
                         {DESKS.filter(d => d.id !== 'admin').map((desk) => (
@@ -247,9 +253,7 @@ const App: React.FC = () => {
                     </div>
                 )}
 
-                {/* Route Surface & Global CEO Chat Panel */}
                 <div className="flex-1 flex min-h-0 relative overflow-hidden">
-                    {/* Main Content Area */}
                     <div className="flex-1 relative overflow-hidden">
                         <Routes>
                             <Route path="/" element={<Navigate to="/trade/overview" replace />} />
@@ -264,7 +268,6 @@ const App: React.FC = () => {
                         </Routes>
                     </div>
 
-                    {/* CEO NEURAL LINK (Global Chat Drawer) */}
                     <div className={`transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] border-l border-[#1a1f2e] bg-[#0b0e14] flex flex-col z-[45] ${chatOpen ? 'w-[350px]' : 'w-0 overflow-hidden'}`}>
                         <div className="h-12 flex items-center justify-between px-4 border-b border-[#1a1f2e] flex-shrink-0">
                             <div className="flex items-center gap-2">

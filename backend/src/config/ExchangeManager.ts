@@ -212,6 +212,12 @@ export interface MarketRuleSet {
     style: 'scalping' | 'intraday' | 'swing' | 'position';
     maxHoldMinutes: number | null; // null = sin límite
     description: string;
+    // ── Ecosystem-level config (persisted to Supabase) ──
+    exchange: string;             // e.g. 'Hyperliquid', 'MEXC', 'Alpaca', 'Axi'
+    mode: 'paper' | 'live';      // paper trading vs live execution
+    apiKey: string;               // exchange API key for this ecosystem
+    apiSecret: string;            // exchange API secret
+    enabled: boolean;             // toggle ecosystem on/off
 }
 
 export const MARKET_RULES: Record<string, MarketRuleSet> = {
@@ -220,40 +226,65 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         maxPositionPct: 30,
         maxRiskPerTradePct: 3,
         style: 'swing',
-        maxHoldMinutes: null,      // swing = sin límite
+        maxHoldMinutes: null,
         description: 'Cripto Majors (BTC, ETH, SOL...) — Perps con leverage',
+        exchange: 'Hyperliquid',
+        mode: 'paper',
+        apiKey: '',
+        apiSecret: '',
+        enabled: true,
     },
     memecoins: {
-        maxLeverage: 1,            // Memes: SIN apalancamiento
-        maxPositionPct: 10,        // Posiciones pequeñas (alto riesgo)
+        maxLeverage: 1,
+        maxPositionPct: 10,
         maxRiskPerTradePct: 2,
         style: 'scalping',
-        maxHoldMinutes: 60,        // Máx 1 hora — intraday rápido
+        maxHoldMinutes: 60,
         description: 'Sniper Meme (DOGE, SHIB, etc.) — Spot, intraday rápido',
+        exchange: 'MEXC',
+        mode: 'paper',
+        apiKey: '',
+        apiSecret: '',
+        enabled: true,
     },
     equities: {
-        maxLeverage: 1,            // Acciones: sin leverage
+        maxLeverage: 1,
         maxPositionPct: 25,
         maxRiskPerTradePct: 3,
         style: 'position',
-        maxHoldMinutes: null,       // Position trading
+        maxHoldMinutes: null,
         description: 'Acciones US (AAPL, TSLA, SPY) — Sin leverage, swing/position',
+        exchange: 'Alpaca',
+        mode: 'paper',
+        apiKey: '',
+        apiSecret: '',
+        enabled: true,
     },
     forex: {
-        maxLeverage: 30,           // Axi Select permite hasta 100x, default 30
+        maxLeverage: 30,
         maxPositionPct: 20,
         maxRiskPerTradePct: 2,
         style: 'intraday',
-        maxHoldMinutes: 480,       // 8 horas max (no overnight si weekendHolding=false)
+        maxHoldMinutes: 480,
         description: 'Forex/Divisas (EUR/USD, XAU) — Prop firm Axi, leverage alto',
+        exchange: 'Axi',
+        mode: 'paper',
+        apiKey: '',
+        apiSecret: '',
+        enabled: true,
     },
     small_caps: {
-        maxLeverage: 1,            // Small caps: SIN leverage
-        maxPositionPct: 10,        // Riesgo controlado
+        maxLeverage: 1,
+        maxPositionPct: 10,
         maxRiskPerTradePct: 2,
         style: 'scalping',
-        maxHoldMinutes: 30,        // Máx 30 min — scalping puro
+        maxHoldMinutes: 30,
         description: 'Small/Micro Caps — Sin leverage, intraday ultra-rápido',
+        exchange: 'Alpaca',
+        mode: 'paper',
+        apiKey: '',
+        apiSecret: '',
+        enabled: true,
     },
 };
 
@@ -279,6 +310,12 @@ export function updateRule(key: string, value: any) {
             if (field === 'risk_per_trade') MARKET_RULES[market].maxRiskPerTradePct = numVal;
             if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
             if (field === 'balance') (MARKET_RULES[market] as any).initialBalance = numVal;
+            // ── New ecosystem-level fields ──
+            if (field === 'exchange') MARKET_RULES[market].exchange = String(value);
+            if (field === 'mode') MARKET_RULES[market].mode = value === 'live' ? 'live' : 'paper';
+            if (field === 'api_key') MARKET_RULES[market].apiKey = String(value);
+            if (field === 'api_secret') MARKET_RULES[market].apiSecret = String(value);
+            if (field === 'enabled') MARKET_RULES[market].enabled = value === true || value === 'true' || value === '1';
             console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
             return;
         }

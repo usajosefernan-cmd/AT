@@ -9,7 +9,7 @@
 
 import { PaperExecutionEngine } from "../engine/PaperExecutionEngine";
 import { validateOrderSize, isMarketOpen, getPairConfig, AXI_SELECT_RULES } from "../config/ExchangeManager";
-import { savePaperPosition, saveAgentMemory, getAgentMemory, getPaperBalance } from "../utils/supabaseClient";
+import { saveAgentMemory, getAgentMemory } from "../utils/supabaseClient";
 import { broadcastAgentState } from "../utils/SwarmEvents";
 
 // ═══════════════════════════════════════════
@@ -281,8 +281,6 @@ export class ToolExecutor {
                 return JSON.stringify({ success: false, error: "PaperEngine rechazó la orden (balance insuficiente o DD)." });
             }
 
-            // Guardar en Supabase
-            await savePaperPosition(position);
 
             broadcastAgentState("risk_manager", "trade_executed", `${args.side} ${args.symbol} $${args.notional_usd}`, "success");
 
@@ -322,22 +320,21 @@ export class ToolExecutor {
     }
 
     private async getPortfolioStatus(): Promise<string> {
-        const balance = await getPaperBalance();
         const openPositions = this.paperEngine.getOpenPositionsSnapshot();
 
         return JSON.stringify({
-            balance: this.paperEngine.account.balance,
-            equity: this.paperEngine.getEquity(),
-            daily_drawdown_pct: this.paperEngine.getDailyDrawdownPct(),
-            max_drawdown_pct: this.paperEngine.getMaxDrawdownPct(),
+            balance: this.paperEngine.getTotalBalance(),
+            equity: this.paperEngine.getTotalEquity(),
+            daily_drawdown_pct: this.paperEngine.getMaxDailyDrawdownPct(),
+            max_drawdown_pct: this.paperEngine.getMaxTotalDrawdownPct(),
             open_positions: openPositions.length,
             positions: openPositions,
-            total_pnl: this.paperEngine.account.totalPnl,
+            total_pnl: this.paperEngine.getTotalPnL(),
             axi_rules: {
                 max_daily_dd: AXI_SELECT_RULES.maxDailyDrawdownPct,
                 max_total_dd: AXI_SELECT_RULES.maxTotalDrawdownPct,
-                daily_dd_remaining: AXI_SELECT_RULES.maxDailyDrawdownPct - this.paperEngine.getDailyDrawdownPct(),
-                total_dd_remaining: AXI_SELECT_RULES.maxTotalDrawdownPct - this.paperEngine.getMaxDrawdownPct(),
+                daily_dd_remaining: AXI_SELECT_RULES.maxDailyDrawdownPct - this.paperEngine.getMaxDailyDrawdownPct(),
+                total_dd_remaining: AXI_SELECT_RULES.maxTotalDrawdownPct - this.paperEngine.getMaxTotalDrawdownPct(),
             },
         });
     }

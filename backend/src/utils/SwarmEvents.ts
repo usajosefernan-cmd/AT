@@ -17,9 +17,13 @@ export const _setIoInstance = (serverIo: SocketIOServer) => {
 
 export const _getIoInstance = () => io;
 
+// ⚡ PERFORMANCE: Throttle maps for backend-side emission control
+const agentStateThrottle: Record<string, number> = {};
+const agentLogThrottle: Record<string, number> = {};
+
 /**
  * Emite los estados de los agentes de IA al Frontend (Pixel-Agents view)
- * Payload Type: {"agent_id": "risk_manager", "action": "evaluating_trade", "target": "BTC/USDT", "status": "active"}
+ * ⚡ Throttled: max 1 emit per agent per 500ms
  */
 export const broadcastAgentState = (
     agentId: string,
@@ -29,37 +33,47 @@ export const broadcastAgentState = (
     payload?: any,
     tokens?: { prompt: number; completion: number }
 ) => {
-    if (io) {
-        const eventPayload = {
-            agent_id: agentId,
-            action,
-            target,
-            status,
-            payload,
-            tokens,
-            timestamp: Date.now()
-        };
-        io.emit("agent_state", eventPayload);
-    } else {
+    if (!io) {
         console.warn("[SwarmEvents] Socket.io no inicializado", agentId, action);
+        return;
     }
+
+    const now = Date.now();
+    const last = agentStateThrottle[agentId] || 0;
+    if (now - last < 500) return; // ⚡ Skip if too soon
+    agentStateThrottle[agentId] = now;
+
+    io.emit("agent_state", {
+        agent_id: agentId,
+        action,
+        target,
+        status,
+        payload,
+        tokens,
+        timestamp: now
+    });
 };
 
 /**
  * Emite texto de log de un agente al LiveTerminal del Dashboard.
- * Esto es lo que el usuario ve como "el agente pensando en tiempo real".
+ * ⚡ Throttled: max 1 log emit per agent per 500ms
  */
 export const broadcastAgentLog = (
     agentId: string,
     text: string,
     level: "info" | "warn" | "error" | "success" = "info"
 ) => {
-    if (io) {
-        io.emit("agent_log", {
-            agent_id: agentId,
-            text,
-            level,
-            timestamp: Date.now()
-        });
-    }
+    if (!io) return;
+
+    const now = Date.now();
+    const last = agentLogThrottle[agentId] || 0;
+    if (now - last < 500) return; // ⚡ Skip if too soon
+    agentLogThrottle[agentId] = now;
+
+    io.emit("agent_log", {
+        agent_id: agentId,
+        text,
+        level,
+        timestamp: now
+    });
 };

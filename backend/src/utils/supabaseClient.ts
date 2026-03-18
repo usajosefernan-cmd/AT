@@ -13,11 +13,13 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 // Paper Trading DB Operations
 // ═══════════════════════════════════════════
 
-export async function savePaperPosition(position: any) {
+export async function savePaperPosition(position: any, marketId: string) {
     const { data, error } = await supabase
         .from("paper_positions")
         .upsert({
             id: position.id,
+            market_id: marketId,
+            exchange: position.exchange || 'unknown',
             symbol: position.symbol,
             side: position.side,
             entry_price: position.entryPrice,
@@ -25,6 +27,9 @@ export async function savePaperPosition(position: any) {
             notional_value: position.notionalValue,
             stop_loss: position.stopLoss,
             take_profit: position.takeProfit,
+            leverage: position.leverage || 1,
+            trailing_stop_pct: position.trailingStop?.active ? position.trailingStop.callbackPct : null,
+            rationale: position.rationale || 'N/A',
             status: position.status,
             unrealized_pnl: position.unrealizedPnl,
             realized_pnl: position.realizedPnl,
@@ -37,32 +42,44 @@ export async function savePaperPosition(position: any) {
     return data;
 }
 
-export async function updatePaperBalance(balance: number, equity: number, dailyDD: number, maxDD: number) {
+export async function updatePaperBalance(marketId: string, balance: number, equity: number, dailyDD: number, maxDD: number, totalPnl: number, initialBalance: number, peakBalance: number, dailyStartBalance: number) {
     const { error } = await supabase
         .from("paper_account")
         .upsert({
-            id: "main",
+            id: marketId,
             balance,
             equity,
             daily_drawdown: dailyDD,
             max_drawdown: maxDD,
+            total_pnl: totalPnl,
+            initial_balance: initialBalance,
+            peak_balance: peakBalance,
+            daily_start_balance: dailyStartBalance,
             updated_at: new Date().toISOString(),
         }, { onConflict: "id" });
 
-    if (error) console.error("[Supabase] Error updating balance:", error.message);
+    if (error) console.error(`[Supabase] Error updating balance for ${marketId}:`, error.message);
 }
 
-export async function getPaperBalance() {
+export async function getAllPaperAccounts() {
     const { data, error } = await supabase
         .from("paper_account")
-        .select("*")
-        .eq("id", "main")
-        .single();
-
+        .select("*");
     if (error && !error.message.includes('coerce')) {
-        console.error("[Supabase] Error fetching balance:", error.message);
+        console.error("[Supabase] Error fetching all accounts:", error.message);
     }
-    return data;
+    return data || [];
+}
+
+export async function getOpenPaperPositions() {
+    const { data, error } = await supabase
+        .from("paper_positions")
+        .select("*")
+        .eq("status", "OPEN");
+    if (error) {
+        console.error("[Supabase] Error fetching open positions:", error.message);
+    }
+    return data || [];
 }
 
 // ═══════════════════════════════════════════

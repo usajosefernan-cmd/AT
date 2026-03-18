@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import { createChart, IChartApi, ISeriesApi, Time, CandlestickData, HistogramData } from "lightweight-charts";
 import { useStore, DESKS, OHLCCandle } from "../store/useStore";
 import { BarChart2, Loader2 } from "lucide-react";
@@ -12,14 +12,14 @@ export const MarketContext: React.FC = () => {
     const activeDeskId = useStore((s) => s.activeDesk);
     const deskConfig = DESKS.find(d => d.id === activeDeskId) || DESKS[0];
     const latestCandle = useStore((s) => s.latestCandle);
-    const latestPrices = useStore((s) => s.marketData);
 
     const activeSymbol = useStore(s => s.selectedSymbols[activeDeskId]) || (deskConfig.symbols[0] || "BTC");
     const [availableSymbols, setAvailableSymbols] = useState<string[]>(deskConfig.symbols);
     const [loading, setLoading] = useState(false);
     const [history, setHistory] = useState<OHLCCandle[]>([]);
 
-    const priceData = latestPrices[activeSymbol];
+    // ⚡ GRANULAR SELECTOR: Only re-render when THIS symbol's price changes
+    const priceData = useStore(s => s.marketData[activeSymbol]);
 
     // Initialize chart
     useEffect(() => {
@@ -230,7 +230,7 @@ export const MarketContext: React.FC = () => {
 
     // Update with real-time TICKS from WebSocket to make chart 100% live
     useEffect(() => {
-        if (!priceData || priceData.price === undefined || !candlestickSeriesRef.current || priceData.symbol !== activeSymbol) return;
+        if (!priceData || priceData.price === undefined || !candlestickSeriesRef.current) return;
 
         const currentPrice = priceData.price;
         let c = lastCandleRef.current;
@@ -306,4 +306,4 @@ export const MarketContext: React.FC = () => {
     );
 };
 
-export default MarketContext;
+export default memo(MarketContext);

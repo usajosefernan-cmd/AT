@@ -53,12 +53,12 @@ export class CEOAgent {
             const contextBlock = `${userMessage}
 
 CONTEXTO ACTUAL:
-- Balance: $${this.paperEngine.account.balance.toFixed(2)}
-- Equity: $${this.paperEngine.getEquity().toFixed(2)}
-- DD Diario: ${this.paperEngine.getDailyDrawdownPct().toFixed(2)}%
-- DD Total: ${this.paperEngine.getMaxDrawdownPct().toFixed(2)}%
-- Posiciones abiertas: ${this.paperEngine.account.positions.size}
-- PnL acumulado: $${this.paperEngine.account.totalPnl.toFixed(2)}
+- Balance: $${this.paperEngine.getTotalBalance().toFixed(2)}
+- Equity: $${this.paperEngine.getTotalEquity().toFixed(2)}
+- DD Diario Máximo: ${this.paperEngine.getMaxDailyDrawdownPct().toFixed(2)}%
+- DD Total Máximo: ${this.paperEngine.getMaxTotalDrawdownPct().toFixed(2)}%
+- Posiciones abiertas: ${this.paperEngine.getTotalPositionsCount()}
+- PnL acumulado: $${this.paperEngine.getTotalPnL().toFixed(2)}
 - Precios actuales: ${JSON.stringify(this.latestPrices)}
 - Hora UTC: ${new Date().toUTCString()}`;
 
@@ -134,13 +134,13 @@ CONTEXTO ACTUAL:
         const report = [
             `📊 *REPORTE DIARIO — ${new Date().toISOString().split("T")[0]}*`,
             ``,
-            `💰 Balance: $${this.paperEngine.account.balance.toFixed(2)}`,
-            `📈 Equity: $${this.paperEngine.getEquity().toFixed(2)}`,
-            `📉 DD Diario: ${this.paperEngine.getDailyDrawdownPct().toFixed(2)}%`,
-            `📉 DD Total: ${this.paperEngine.getMaxDrawdownPct().toFixed(2)}%`,
-            `📊 PnL Total: $${this.paperEngine.account.totalPnl.toFixed(2)}`,
-            `🔓 Posiciones abiertas: ${this.paperEngine.account.positions.size}`,
-            `📝 Trades cerrados hoy: ${this.paperEngine.account.closedPositions.length}`,
+            `💰 Balance: $${this.paperEngine.getTotalBalance().toFixed(2)}`,
+            `📈 Equity: $${this.paperEngine.getTotalEquity().toFixed(2)}`,
+            `📉 DD Diario: ${this.paperEngine.getMaxDailyDrawdownPct().toFixed(2)}%`,
+            `📉 DD Total: ${this.paperEngine.getMaxTotalDrawdownPct().toFixed(2)}%`,
+            `📊 PnL Total: $${this.paperEngine.getTotalPnL().toFixed(2)}`,
+            `🔓 Posiciones abiertas: ${this.paperEngine.getTotalPositionsCount()}`,
+            `📝 Trades cerrados hoy: ${this.paperEngine.getTotalClosedCount()}`,
             ``,
             `Última decisión del Risk Manager:`,
             riskMemory ? riskMemory.content.slice(0, 200) : "Sin decisiones registradas.",

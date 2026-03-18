@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { useStore, AgentLogEntry } from "../store/useStore";
 import { Shield, Activity, Zap, Eye, AlertTriangle, CheckCircle2, XCircle, Clock, TrendingUp, Users, MessageSquare, Send, Settings, ChevronDown, ChevronRight } from "lucide-react";
 
@@ -40,7 +40,7 @@ interface ChatMsg {
 }
 
 // ─── Sidebar Room Tab ──────────────────────
-const RoomTab: React.FC<{ room: MarketRoom; active: boolean; logCount: number; onClick: () => void }> = ({ room, active, logCount, onClick }) => (
+const RoomTab = memo<{ room: MarketRoom; active: boolean; logCount: number; onClick: () => void }>(({ room, active, logCount, onClick }) => (
     <button
         onClick={onClick}
         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left group ${active ? "bg-white/[0.06] shadow-lg" : "hover:bg-white/[0.03]"}`}
@@ -57,7 +57,7 @@ const RoomTab: React.FC<{ room: MarketRoom; active: boolean; logCount: number; o
             </span>
         )}
     </button>
-);
+));
 
 // ─── Agent Pipeline Mini Card ──────────────
 const MiniAgent: React.FC<{ label: string; level: string; color: string }> = ({ label, level, color }) => (
@@ -68,7 +68,7 @@ const MiniAgent: React.FC<{ label: string; level: string; color: string }> = ({ 
 );
 
 // ─── Log Entry ─────────────────────────────
-const LogLine: React.FC<{ log: AgentLogEntry }> = ({ log }) => {
+const LogLine = memo<{ log: AgentLogEntry }>(({ log }) => {
     const color = { info: "#5a6577", warn: "#f59e0b", error: "#ef4444", success: "#22c55e" }[log.level] || "#5a6577";
     const time = new Date(log.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     return (
@@ -78,7 +78,7 @@ const LogLine: React.FC<{ log: AgentLogEntry }> = ({ log }) => {
             <span className="text-[9px] font-mono leading-relaxed break-words" style={{ color }}>{log.text}</span>
         </div>
     );
-};
+});
 
 // ─── Chat Bubble ───────────────────────────
 const ChatBubble: React.FC<{ msg: ChatMsg; color: string }> = ({ msg, color }) => {
@@ -127,7 +127,7 @@ const MarketRulesCard: React.FC<{ room: MarketRoom; rules: any }> = ({ room, rul
 };
 
 // ─── Main Component ────────────────────────
-const AgentRooms: React.FC = () => {
+const AgentRooms: React.FC = memo(() => {
     const [activeRoom, setActiveRoom] = useState<string>("crypto");
     const [chatMessages, setChatMessages] = useState<Record<string, ChatMsg[]>>({});
     const [chatInput, setChatInput] = useState("");
@@ -151,8 +151,8 @@ const AgentRooms: React.FC = () => {
         }).catch(() => {});
     }, []);
 
-    // Filter logs for active room
-    const roomLogs = allLogs.filter(log => {
+    // ⚡ OPTIMIZED: Memoize log filtering to avoid O(n*m) on every render
+    const roomLogs = useMemo(() => allLogs.filter(log => {
         const text = (log.text || "").toLowerCase();
         const aid = (log.agent_id || "").toLowerCase();
         if (text.includes(room.exchange.toLowerCase())) return true;
@@ -163,7 +163,7 @@ const AgentRooms: React.FC = () => {
         if (room.id === "forex" && (text.includes("eurusd") || text.includes("xauusd") || text.includes("forex") || text.includes("macro") || aid.includes("l2_forex"))) return true;
         if (room.id === "smallcaps" && (text.includes("small") || text.includes("halt") || text.includes("dilut") || aid.includes("l2_small"))) return true;
         return false;
-    }).slice(-50);
+    }).slice(-50), [allLogs, room]);
 
     // Auto-scroll logs
     useEffect(() => {
@@ -175,14 +175,14 @@ const AgentRooms: React.FC = () => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chatMessages[activeRoom]?.length]);
 
-    // Count logs per room for badges
-    const logCounts = ROOMS.reduce((acc, r) => {
+    // ⚡ OPTIMIZED: Memoize badge counts
+    const logCounts = useMemo(() => ROOMS.reduce((acc, r) => {
         acc[r.id] = allLogs.filter(l => {
             const t = (l.text || "").toLowerCase();
             return t.includes(r.exchange.toLowerCase()) || t.includes(r.id);
         }).length;
         return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, number>), [allLogs]);
 
     // Send chat message to market's agents
     const handleSendChat = useCallback(async () => {
@@ -383,6 +383,6 @@ const AgentRooms: React.FC = () => {
             </div>
         </div>
     );
-};
+});
 
 export default AgentRooms;

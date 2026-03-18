@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { DeskConfig, useStore } from "../store/useStore";
 import MarketContext from "./MarketContext";
 import HunterControl from "./HunterControl";
@@ -202,4 +202,4 @@ const DeskView: React.FC<Props> = ({ desk }) => {
     );
 };
 
-export default DeskView;
+export default memo(DeskView);

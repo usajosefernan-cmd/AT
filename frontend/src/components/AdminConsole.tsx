@@ -442,7 +442,7 @@ const AdminConsole: React.FC = () => {
                                 ) : (
                                     <>
                                         <Save size={18} />
-                                        APLICAR DIRECTIVAS GLOBALES
+                                        💾 GUARDAR CONFIGURACIÓN EN BASE DE DATOS
                                     </>
                                 )}
                             </span>

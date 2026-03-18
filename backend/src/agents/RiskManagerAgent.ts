@@ -25,7 +25,7 @@ import { TOOL_DEFINITIONS, ToolExecutor } from "../tools/TradingTools";
 import { AXI_SELECT_RULES, MARKET_RULES, isMarketOpen, validateOrderSize } from "../config/ExchangeManager";
 import { PaperExecutionEngine } from "../engine/PaperExecutionEngine";
 import { broadcastAgentState, broadcastAgentLog } from "../utils/SwarmEvents";
-import { saveAgentMemory, getPaperBalance } from "../utils/supabaseClient";
+import { saveAgentMemory } from "../utils/supabaseClient";
 
 // ═══════════════════════════════════════════
 // System Prompt — Risk Manager (el guardián)
@@ -101,21 +101,13 @@ export class RiskManagerAgent {
         // FILTROS DUROS (TypeScript puro, sin LLM, milisegundos)
         // ═══════════════════════════════════════════
 
-        const equity = this.paperEngine.getEquity();
-        const dailyDD = this.paperEngine.getDailyDrawdownPct();
-        const maxDD = this.paperEngine.getMaxDrawdownPct();
+        const equity = this.paperEngine.getTotalEquity();
+        const dailyDD = this.paperEngine.getMaxDailyDrawdownPct();
+        const maxDD = this.paperEngine.getMaxTotalDrawdownPct();
         const riskOfTrade = (signal.stop_loss_pct / 100) * (signal.notional_usd / equity) * 100;
 
-        // Also read from Supabase as ground truth cross-check
-        let supabaseDD: { daily_drawdown?: number; max_drawdown?: number } | null = null;
-        try {
-            supabaseDD = await getPaperBalance();
-        } catch (err: any) {
-            console.warn(`[RiskManager] Could not read Supabase DD: ${err.message}. Using in-memory values.`);
-        }
-
-        const effectiveDailyDD = Math.max(dailyDD, supabaseDD?.daily_drawdown ?? 0);
-        const effectiveMaxDD = Math.max(maxDD, supabaseDD?.max_drawdown ?? 0);
+        const effectiveDailyDD = dailyDD;
+        const effectiveMaxDD = maxDD;
 
         console.log(`[RiskManager] ═══ HARD FILTERS START ═══`);
         console.log(`[RiskManager] Equity: $${equity.toFixed(2)} | Daily DD: ${effectiveDailyDD.toFixed(2)}% | Max DD: ${effectiveMaxDD.toFixed(2)}% | Trade Risk: ${riskOfTrade.toFixed(2)}%`);
@@ -308,12 +300,12 @@ export class RiskManagerAgent {
 ${JSON.stringify(signal, null, 2)}
 
 Estado actual del portfolio:
-- Balance: $${this.paperEngine.account.balance.toFixed(2)}
+- Balance: $${this.paperEngine.getTotalBalance().toFixed(2)}
 - Equity: $${equity.toFixed(2)}
 - DD Diario: ${effectiveDailyDD.toFixed(2)}% (límite: ${AXI_SELECT_RULES.maxDailyDrawdownPct}%)
 - DD Máximo: ${effectiveMaxDD.toFixed(2)}% (límite: ${AXI_SELECT_RULES.maxTotalDrawdownPct}%)
 - Posiciones abiertas: ${openPositions.length}
-- PnL Total: $${this.paperEngine.account.totalPnl.toFixed(2)}
+- PnL Total: $${this.paperEngine.getTotalPnL().toFixed(2)}
 - Posiciones del mismo mercado: ${sameMarketPositions.length}/2
 
 Fecha/hora UTC: ${new Date().toUTCString()}

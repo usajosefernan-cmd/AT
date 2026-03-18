@@ -93,9 +93,7 @@ const wsManager = new WebSocketManager();
 // ═══════════════════════════════════════════
 // 4. Paper Execution Engine
 // ═══════════════════════════════════════════
-const paperEngine = new PaperExecutionEngine(
-    parseFloat(process.env.PAPER_INITIAL_BALANCE || "10000")
-);
+const paperEngine = new PaperExecutionEngine();
 
 // ═══════════════════════════════════════════
 // 5. Telegram Bot
@@ -185,7 +183,6 @@ paperEngine.on("pnl_update", (data) => io.emit("paper_pnl", data));
 
 paperEngine.on("position_opened", async (pos) => {
     io.emit("paper_position_opened", pos);
-    await savePaperPosition(pos);
     // Notificar al usuario por Telegram cuando se abre un trade
     const sideEmoji = pos.side === 'LONG' ? '🟢' : '🔴';
     TelegramManager.broadcastAlert(
@@ -201,16 +198,14 @@ paperEngine.on("position_opened", async (pos) => {
 
 paperEngine.on("position_closed", async (pos) => {
     io.emit("paper_position_closed", pos);
-    await savePaperPosition(pos);
     const emoji = pos.realizedPnl >= 0 ? "🟢" : "🔴";
     TelegramManager.broadcastAlert(
         `${emoji} * Posición Cerrada *\n${pos.symbol} ${pos.side} \nPnL: $${pos.realizedPnl.toFixed(2)} \nRazón: ${pos.status} `
     );
 });
 
-paperEngine.on("account_update", async (snapshot) => {
+paperEngine.on("account_update", (snapshot) => {
     io.emit("paper_account", snapshot);
-    await updatePaperBalance(snapshot.balance, snapshot.equity, snapshot.dailyDrawdown, snapshot.maxDrawdown);
 });
 
 paperEngine.on("drawdown_alert", (alert) => {
@@ -311,6 +306,10 @@ app.put("/api/config", async (req, res) => {
         if (key.startsWith("risk_")) {
             aiLoop.reloadRiskConfig(key, value);
         }
+        // Hot-reload agent profiles
+        if (key.startsWith("agent_")) {
+            await ProfileParser.reloadConfig();
+        }
         io.emit("config_updated", { key, value });
         res.json({ success: true });
     } catch (error: any) {
@@ -332,17 +331,28 @@ app.get("/api/config/risk", (_req, res) => {
     });
 });
 
-app.post("/api/config/risk", (req, res) => {
+app.post("/api/config/risk", async (req, res) => {
     try {
-        const updates = req.body; // { risk_max_daily_dd_pct: 8, risk_max_position_pct: 60, ... }
+        const updates = req.body; // { risk_max_daily_dd_pct: 8, market_crypto_leverage: 10, ... }
         for (const [key, value] of Object.entries(updates)) {
             updateRule(key, value);
             // Also hot-reload into RiskManager
             aiLoop.reloadRiskConfig(key, value);
         }
         io.emit("config_updated", { risk: AXI_SELECT_RULES, markets: MARKET_RULES });
-        // Persist to Supabase
+        // Persist MARKET_RULES object to agent_memory
         saveMarketRules(MARKET_RULES).catch(e => console.error('[Supabase] Save error:', e));
+        // Also persist each market_* key individually to system_config for frontend hydration
+        const marketKeys = Object.entries(updates).filter(([k]) => k.startsWith("market_"));
+        if (marketKeys.length > 0) {
+            const upserts = marketKeys.map(([key, value]) => ({
+                key,
+                value: String(value),
+                updated_at: new Date().toISOString(),
+            }));
+            supabase.from("system_config").upsert(upserts, { onConflict: "key" })
+                .then(({ error }) => { if (error) console.error('[Supabase] market_* save error:', error); });
+        }
         res.json({ success: true, rules: AXI_SELECT_RULES, markets: MARKET_RULES });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -355,32 +365,57 @@ app.post("/api/paper/reset-dd", (_req, res) => {
     // Also sync DD limits from AXI_SELECT_RULES
     paperEngine.updateConfig("risk_max_daily_dd_pct", AXI_SELECT_RULES.maxDailyDrawdownPct);
     paperEngine.updateConfig("risk_max_total_dd_pct", AXI_SELECT_RULES.maxTotalDrawdownPct);
-    io.emit("paper_dd_reset", { dailyDrawdown: paperEngine.getDailyDrawdownPct() });
-    res.json({ success: true, message: "Daily drawdown reset. Trading desbloqueado.", dailyDD: paperEngine.getDailyDrawdownPct() });
+    io.emit("paper_dd_reset", { dailyDrawdown: paperEngine.getMaxDailyDrawdownPct() });
+    res.json({ success: true, message: "Daily drawdown reset. Trading desbloqueado.", dailyDD: paperEngine.getMaxDailyDrawdownPct() });
 });
 
-app.post("/api/paper/reset-balance", (req, res) => {
+app.post("/api/paper/reset-balance", async (req, res) => {
     const newBalance = parseFloat(req.body?.balance) || 10000;
-    paperEngine.account.balance = newBalance;
-    paperEngine.account.initialBalance = newBalance;
-    paperEngine.account.peakBalance = newBalance;
-    paperEngine.account.dailyStartBalance = newBalance;
-    paperEngine.account.totalPnl = 0;
-    paperEngine.account.closedPositions = [];
-    paperEngine.account.positions.clear();
-    paperEngine.emitAccountUpdate();
-    io.emit("paper_balance_reset", { balance: newBalance });
-    res.json({ success: true, balance: newBalance, message: `Balance reiniciado a $${newBalance}` });
+    
+    try {
+        const { supabase } = await import("./src/utils/supabaseClient");
+        await supabase.from("paper_positions").delete().neq('id', 'NONE');
+        
+        for (const m of Object.keys(paperEngine.accounts)) {
+            const acc = paperEngine.accounts[m];
+            acc.balance = newBalance;
+            acc.initialBalance = newBalance;
+            acc.peakBalance = newBalance;
+            acc.dailyStartBalance = newBalance;
+            acc.totalPnl = 0;
+            acc.closedPositions = [];
+            acc.positions.clear();
+            
+            await supabase.from("paper_account").upsert({
+                id: m,
+                balance: newBalance,
+                equity: newBalance,
+                daily_drawdown: 0,
+                max_drawdown: 0,
+                total_pnl: 0,
+                initial_balance: newBalance,
+                peak_balance: newBalance,
+                daily_start_balance: newBalance,
+                updated_at: new Date().toISOString()
+            });
+        }
+        paperEngine.emitAccountUpdate();
+        io.emit("paper_balance_reset", { balance: newBalance });
+        res.json({ success: true, balance: newBalance, message: `Balance reiniciado a $${newBalance} y base de datos de posiciones limpiada` });
+    } catch (e: any) {
+        console.error("Error resting balance in DB", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 // Portfolio state
 app.get("/api/positions", (_req, res) => {
     res.json({
         positions: paperEngine.getOpenPositionsSnapshot(),
-        equity: paperEngine.getEquity(),
-        balance: paperEngine.account.balance,
-        dailyDrawdown: paperEngine.getDailyDrawdownPct(),
-        maxDrawdown: paperEngine.getMaxDrawdownPct(),
-        totalPnl: paperEngine.account.totalPnl,
+        equity: paperEngine.getTotalEquity(),
+        balance: paperEngine.getTotalBalance(),
+        dailyDrawdown: paperEngine.getMaxDailyDrawdownPct(),
+        maxDrawdown: paperEngine.getMaxTotalDrawdownPct(),
+        totalPnl: paperEngine.getTotalPnL(),
     });
 });
 
@@ -571,6 +606,31 @@ server.listen(PORT, "0.0.0.0", async () => {
         }
     } catch (e) {
         console.warn("[Startup] ⚠️ No se pudieron cargar MARKET_RULES desde Supabase:", e);
+    }
+
+    // Load system_config from Supabase (persisted UI settings like risk_max_daily_dd_pct)
+    try {
+        const { data: configData, error: configError } = await supabase.from("system_config").select("*");
+        if (!configError && configData) {
+            let loadedCount = 0;
+            for (const row of configData) {
+                if (row.key.startsWith("risk_") || row.key.startsWith("market_")) {
+                    updateRule(row.key, row.value);
+                    loadedCount++;
+                }
+            }
+            console.log(`[Startup] ✅ system_config cargado desde Supabase: ${loadedCount} reglas aplicadas.`);
+        }
+    } catch (e) {
+        console.warn("[Startup] ⚠️ No se pudo cargar system_config desde Supabase:", e);
+    }
+
+    // Load AI Profiles & System Prompts
+    try {
+        await ProfileParser.bootstrap();
+        console.log(`[Startup] ✅ ProfileParser inicializado.`);
+    } catch (e) {
+        console.warn("[Startup] ⚠️ Error inicializando ProfileParser:", e);
     }
 
     // Sync PaperEngine DD limits from AXI_SELECT_RULES (may have been updated from Supabase)

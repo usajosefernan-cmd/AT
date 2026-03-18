@@ -12,8 +12,8 @@
  *
  * ONLY the top anomalies "wake up" the HunterAgent to save Groq tokens.
  */
-
 import { broadcastAgentLog, _getIoInstance } from "../utils/SwarmEvents";
+import { getTopUSEquities, getTopForexPairs, getTopSmallCapGappers } from "./TVScreener";
 
 // ═══════════════════════════════════════════
 // Types
@@ -198,49 +198,35 @@ async function fetchHyperliquidTickers(): Promise<RadarAsset[]> {
 }
 
 /**
- * Fetches active US Equities using Alpaca public data or standard tech stocks.
+ * Fetches active US Equities dynamically from TradingView Screener.
+ * Combines Mega-Cap active stocks with Small-Cap Gappers.
  */
 async function fetchAlpacaTickers(): Promise<RadarAsset[]> {
     try {
-        const stocks = [
-            "AAPL", "TSLA", "SPY", "NVDA", "MSFT", "AMZN", "META", "GOOGL", "NFLX", "AMD", 
-            "INTC", "PYPL", "SQ", "BA", "DIS", "JPM", "V", "MA", "COIN", "MARA", "RIOT", 
-            "GME", "AMC", "PLTR", "SOFI", "UBER", "LYFT", "ABNB", "HOOD", "MSTR", "DKNG",
-            "BABA", "NIO", "XPEV", "JD", "TLT", "QQQ", "IWM", "DIA", "GLD", "SLV", "USO",
-            "UNH", "JNJ", "XOM", "CVX", "PG", "HD", "KO", "PEP", "ORCL", "CRM", "ADBE"
-        ];
-        return stocks.map(sym => ({
-            symbol: sym,
-            exchange: "alpaca",
-            price: 10 + Math.random() * 990,
-            change_pct_24h: (Math.random() * 6) - 3,
-            volume_24h: 5_000_000 + Math.random() * 50_000_000,
-            high_24h: 0,
-            low_24h: 0,
-            quoteVolume: 100_000_000,
-        }));
-    } catch { return cachedAlpacaTickers; }
+        const [equities, gappers] = await Promise.all([
+            getTopUSEquities(100),       // Mega/Large caps with high volume
+            getTopSmallCapGappers(100)   // Small/Micro caps moving >4%
+        ]);
+        
+        const combined = [...(equities || []), ...(gappers || [])];
+        
+        // Deduplicate by symbol just in case
+        const unique = Array.from(new Map(combined.map(item => [item.symbol, item])).values());
+        
+        if (unique.length > 0) return unique;
+    } catch (err) { }
+    return cachedAlpacaTickers;
 }
 
 /**
- * Provides standard Forex / Metals pairs.
+ * Fetches active Forex pairs dynamically from TradingView Screener.
  */
 async function fetchForexTickers(): Promise<RadarAsset[]> {
-    const fxPairs = [
-        "EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "USDCAD", "AUDUSD", "NZDUSD", "USDCHF", 
-        "GBPJPY", "EURJPY", "AUDJPY", "CADJPY", "EURAUD", "EURGBP", "EURCAD", "GBPCHF", 
-        "XAGUSD", "BTCUSD", "ETHUSD", "US30", "SPX500", "NAS100", "GER30", "UK100"
-    ];
-    return fxPairs.map(sym => ({
-        symbol: sym,
-        exchange: "axi",
-        price: sym === "XAUUSD" ? 2300 : sym.includes("JPY") ? 150 : 1,
-        change_pct_24h: (Math.random() * 1.5) - 0.75,
-        volume_24h: 10_000_000,
-        high_24h: 0,
-        low_24h: 0,
-        quoteVolume: 50_000_000,
-    }));
+    try {
+        const forex = await getTopForexPairs(30); // Get top 30 active pairs
+        if (forex && forex.length > 0) return forex;
+    } catch (err) { }
+    return cachedForexTickers;
 }
 
 /**

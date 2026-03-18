@@ -90,8 +90,9 @@ export class SwarmAutonomyLoop {
                         io?.emit('trade_executed', { ecosystem: '3_memecoins', asset, decision: l3Res.decision });
                         // EJECUTAR EN PAPER ENGINE
                         this.paperEngine?.openPosition({
-                            symbol: asset, exchange: 'MEXC', side: 'LONG',
-                            entryPrice: data.close, notionalValue: Math.min(l3Res.decision.size_usd || 100, 500),
+                            symbol: asset, exchange: 'MEXC', side: l3Res.decision.side?.toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG',
+                            entryPrice: data.close, notionalValue: l3Res.decision.size_usd || 100,
+                            leverage: l3Res.decision.leverage || 1,
                             stopLoss: l3Res.decision.stop_loss, takeProfit: l3Res.decision.take_profit,
                             rationale: l3Res.decision.rationale, openedBy: 'L3_Memecoins'
                         });
@@ -140,6 +141,13 @@ export class SwarmAutonomyLoop {
                     const l3Res = JSON.parse(l3ResStr);
                     if (l3Res.decision?.approved) {
                         (global as any).io?.emit('trade_executed', { ecosystem: '4_equities_large', asset, decision: l3Res.decision });
+                        this.paperEngine?.openPosition({
+                            symbol: asset, exchange: 'Alpaca', side: l3Res.decision.side?.toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG',
+                            entryPrice: data.open, notionalValue: l3Res.decision.size_usd || 500,
+                            leverage: l3Res.decision.leverage || 1,
+                            stopLoss: l3Res.decision.stop_loss, takeProfit: l3Res.decision.take_profit,
+                            rationale: l3Res.decision.rationale, openedBy: 'L3_Equities'
+                        });
                     }
                 }
             }
@@ -201,8 +209,9 @@ export class SwarmAutonomyLoop {
                         io?.emit('trade_executed', { ecosystem: '2_crypto_majors', asset, decision: l3Res.decision });
                         console.log(`\x1b[42m\x1b[30m [TRADE] ✅ ABRIENDO ${asset} @ $${price} \x1b[0m`);
                         this.paperEngine?.openPosition({
-                            symbol: asset, exchange: 'Hyperliquid', side: 'LONG',
-                            entryPrice: price, notionalValue: Math.min(l3Res.decision.size_usd || 200, 1000),
+                            symbol: asset, exchange: 'Hyperliquid', side: l3Res.decision.side?.toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG',
+                            entryPrice: price, notionalValue: l3Res.decision.size_usd || 200,
+                            leverage: l3Res.decision.leverage || 1,
                             stopLoss: l3Res.decision.stop_loss, takeProfit: l3Res.decision.take_profit,
                             rationale: l3Res.decision.rationale, openedBy: 'L3_Crypto_Majors'
                         });

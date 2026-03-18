@@ -58,7 +58,7 @@ export interface AgentLog { id: string; agent_id: string; text: string; level: "
 export type AgentLogEntry = AgentLog;
 
 // ═══════════════════════════════════════════
-// STORE
+// STORE — OPTIMIZED FOR HIGH-FREQUENCY DATA
 // ═══════════════════════════════════════════
 
 interface AppStore {
@@ -75,7 +75,7 @@ interface AppStore {
     orderBook: { bids: OrderBookLevel[]; asks: OrderBookLevel[]; symbol: string; };
     equityCurve: EquityPoint[];
     killSwitchActive: boolean;
-    selectedSymbols: Record<string, string>; // deskId -> symbol
+    selectedSymbols: Record<string, string>;
 
     // Actions
     setPixelAssets: (assets: any) => void;
@@ -96,7 +96,7 @@ interface AppStore {
     disconnectSocket: () => void;
 }
 
-export const useStore = create<AppStore>((set) => ({
+export const useStore = create<AppStore>((set, get) => ({
     connected: false,
     pixelAssets: null,
     activeDesk: "overview",
@@ -187,22 +187,39 @@ export const useStore = create<AppStore>((set) => ({
     setPixelAssets: (assets) => set({ pixelAssets: assets }),
     setConnected: (v) => set({ connected: v }),
     setActiveDesk: (id) => set({ activeDesk: id }),
-    updatePrice: (tick) => set((s) => ({
-        marketData: { ...s.marketData, [tick.symbol]: { price: tick.price, prevPrice: s.marketData[tick.symbol]?.price || tick.price, source: tick.source, timestamp: tick.timestamp } },
-    })),
+
+    // ⚡ OPTIMIZED: mutate in-place, only create new ref for the single symbol entry
+    updatePrice: (tick) => {
+        const s = get();
+        const prev = s.marketData[tick.symbol];
+        // Skip if price hasn't changed
+        if (prev && prev.price === tick.price) return;
+        s.marketData[tick.symbol] = { price: tick.price, prevPrice: prev?.price || tick.price, source: tick.source, timestamp: tick.timestamp };
+        // Signal React with a shallow-new ref only for the top-level object
+        set({ marketData: { ...s.marketData } });
+    },
+
     updateCandle: (c) => set({ latestCandle: c }),
-    updateAgent: (id, patch) => set((s) => ({
-        agents: { ...s.agents, [id]: { ...s.agents[id], ...patch, timestamp: Date.now() } },
-    })),
+
+    // ⚡ OPTIMIZED: skip if no actual change
+    updateAgent: (id, patch) => {
+        const s = get();
+        const current = s.agents[id];
+        if (current && current.status === patch.status && current.action === patch.action && current.target === patch.target) return;
+        set({
+            agents: { ...s.agents, [id]: { ...current, ...patch, timestamp: Date.now() } },
+        });
+    },
+
     updateAccount: (a) => set((s) => ({
         account: { ...s.account, ...a },
-        equityCurve: [...s.equityCurve.slice(-500), { time: Date.now(), equity: a.equity || s.account.equity }],
+        equityCurve: [...s.equityCurve.slice(-200), { time: Date.now(), equity: a.equity || s.account.equity }],
     })),
     addPosition: (p) => set((s) => ({ activePositions: [...s.activePositions, p] })),
     removePosition: (id) => set((s) => ({ activePositions: s.activePositions.filter((p) => p.id !== id) })),
     updateActivePositions: (p) => set({ activePositions: p }),
-    addAgentLog: (log) => set((s) => ({ agentLogs: [...s.agentLogs.slice(-100), log] })),
-    addTape: (t) => set((s) => ({ tape: [...s.tape.slice(-50), t] })),
+    addAgentLog: (log) => set((s) => ({ agentLogs: [...s.agentLogs.slice(-80), log] })),
+    addTape: (t) => set((s) => ({ tape: [...s.tape.slice(-30), t] })),
     updateOrderBook: (orderBook) => set({ orderBook }),
     setKillSwitch: (killSwitchActive) => set({ killSwitchActive }),
     setSelectedSymbol: (deskId, symbol) => set((s) => ({
@@ -212,7 +229,7 @@ export const useStore = create<AppStore>((set) => ({
 }));
 
 // ═══════════════════════════════════════════
-// SOCKET — connects to the REAL backend
+// SOCKET — HIGH-PERFORMANCE EVENT PIPELINE
 // ═══════════════════════════════════════════
 
 export let socket: Socket | null = null;
@@ -221,11 +238,10 @@ export const getSocket = () => socket;
 export function initSocket(token?: string) {
     if (socket) return socket;
 
-    // Dynamic Cloud / Local connection URL
     const url = import.meta.env.VITE_BACKEND_WSS_URL || import.meta.env.VITE_API_URL || "http://localhost:8080";
 
     socket = io(url, {
-        auth: { token } // Passport for backend
+        auth: { token }
     });
 
     socket.on("connect", () => {
@@ -238,7 +254,7 @@ export function initSocket(token?: string) {
             .then(data => {
                 useStore.getState().updateAccount(data);
                 if (data.positions) {
-                    data.positions.forEach((p: any) => useStore.getState().addPosition(p));
+                    useStore.getState().updateActivePositions(data.positions);
                 }
             })
             .catch(err => console.error("Initial fetch error:", err));
@@ -253,28 +269,55 @@ export function initSocket(token?: string) {
         useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: "❌ Connection Lost from Backend", level: "error", timestamp: Date.now() });
     });
 
-    // Auth errors from Backend
     socket.on("connect_error", (err) => {
         console.error("Socket error:", err.message);
-        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: `❌ SOCKET ERROR: ${err.message}`, level: "error", timestamp: Date.now() });
     });
 
-    // Real market ticks — THROTTLED to prevent UI freeze
-    const tickThrottle: Record<string, number> = {};
+    // ═══════════════════════════════════════════
+    // ⚡ PERFORMANCE: Batched price updates via RAF
+    // ═══════════════════════════════════════════
+    const tickBuffer: Record<string, MarketTick> = {};
+    let rafScheduled = false;
+
+    const flushTicks = () => {
+        rafScheduled = false;
+        const symbols = Object.keys(tickBuffer);
+        if (symbols.length === 0) return;
+
+        const store = useStore.getState();
+        let changed = false;
+        for (const sym of symbols) {
+            const tick = tickBuffer[sym];
+            const prev = store.marketData[sym];
+            if (!prev || prev.price !== tick.price) {
+                store.marketData[sym] = { price: tick.price, prevPrice: prev?.price || tick.price, source: tick.source, timestamp: tick.timestamp };
+                changed = true;
+            }
+        }
+        // Clear buffer
+        for (const sym of symbols) delete tickBuffer[sym];
+
+        if (changed) {
+            useStore.setState({ marketData: { ...store.marketData } });
+        }
+    };
+
     let lastTapeAdd = 0;
     socket.on("market_tick", (tick: MarketTick) => {
         if (!tick.symbol || !tick.price) return;
-        
-        // Throttle: max 1 update per symbol per 100ms for that high-frequency feel
+
+        // Buffer the tick (latest wins per symbol)
+        tickBuffer[tick.symbol] = tick;
+
+        // Schedule a single RAF flush
+        if (!rafScheduled) {
+            rafScheduled = true;
+            requestAnimationFrame(flushTicks);
+        }
+
+        // Tape: max 1 entry every 3 seconds
         const now = Date.now();
-        const last = tickThrottle[tick.symbol] || 0;
-        if (now - last < 100) return;
-        tickThrottle[tick.symbol] = now;
-        
-        useStore.getState().updatePrice(tick);
-        
-        // Tape: max 1 entry per second total (not per tick)
-        if (now - lastTapeAdd > 1000) {
+        if (now - lastTapeAdd > 3000) {
             lastTapeAdd = now;
             useStore.getState().addTape({
                 id: crypto.randomUUID(), symbol: tick.symbol, price: tick.price,
@@ -284,18 +327,29 @@ export function initSocket(token?: string) {
         }
     });
 
-    // Real candle data
+    // Real candle data — already low-frequency
     socket.on("market_kline", (c: OHLCCandle) => useStore.getState().updateCandle(c));
 
-    // Agent updates
+    // ⚡ Agent state updates — throttled per agent (500ms)
+    const agentThrottle: Record<string, number> = {};
     socket.on("agent_state", (state: any) => {
+        const now = Date.now();
+        const last = agentThrottle[state.agent_id] || 0;
+        if (now - last < 500) return;
+        agentThrottle[state.agent_id] = now;
+
         useStore.getState().updateAgent(state.agent_id, {
             status: state.status, action: state.action, target: state.target,
             payload: state.payload, tokens: state.tokens,
         });
     });
 
+    // ⚡ Agent logs — throttled globally (300ms)
+    let lastLogTime = 0;
     socket.on("new_log", (log: any) => {
+        const now = Date.now();
+        if (now - lastLogTime < 300) return;
+        lastLogTime = now;
         useStore.getState().addAgentLog({
             id: crypto.randomUUID(),
             agent_id: log.agent_id || "system",
@@ -309,7 +363,12 @@ export function initSocket(token?: string) {
         useStore.getState().updateActivePositions(positions);
     });
 
+    // ⚡ Agent log — throttled (300ms)
+    let lastAgentLogTime = 0;
     socket.on("agent_log", (log: any) => {
+        const now = Date.now();
+        if (now - lastAgentLogTime < 300) return;
+        lastAgentLogTime = now;
         useStore.getState().addAgentLog({
             id: crypto.randomUUID(),
             agent_id: log.agent_id || log.agent || "SYSTEM",
@@ -319,7 +378,7 @@ export function initSocket(token?: string) {
         });
     });
 
-    // Paper trading events
+    // Paper trading events — low frequency, no throttle needed
     socket.on("paper_account", (s: any) => useStore.getState().updateAccount(s));
     socket.on("paper_position_opened", (p: PaperPosition) => {
         useStore.getState().addPosition(p);
@@ -329,27 +388,40 @@ export function initSocket(token?: string) {
         useStore.getState().removePosition(p.id);
         useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "ceo", text: `📉 Posición cerrada: ${p.symbol} PnL=$${p.realizedPnl?.toFixed(2)}`, level: p.realizedPnl >= 0 ? "success" : "error", timestamp: Date.now() });
     });
+
+    // ⚡ PnL updates — throttled per position (1s)
+    const pnlThrottle: Record<string, number> = {};
     socket.on("paper_pnl", (d: any) => {
-        const p = useStore.getState().activePositions.find(x => x.id === d.positionId);
-        if (p) {
-             const updated = useStore.getState().activePositions.map((p) => p.id === d.positionId ? { ...p, unrealizedPnl: d.unrealizedPnl, unrealizedPnlPct: d.unrealizedPnlPct || 0 } : p);
-             useStore.setState({ activePositions: updated });
+        const now = Date.now();
+        const last = pnlThrottle[d.positionId] || 0;
+        if (now - last < 1000) return;
+        pnlThrottle[d.positionId] = now;
+
+        const positions = useStore.getState().activePositions;
+        const idx = positions.findIndex(x => x.id === d.positionId);
+        if (idx >= 0) {
+            const updated = positions.map((p) => p.id === d.positionId ? { ...p, unrealizedPnl: d.unrealizedPnl, unrealizedPnlPct: d.unrealizedPnlPct || 0 } : p);
+            useStore.setState({ activePositions: updated });
         }
     });
 
-    // Omnichannel CEO bindings
+    // Omnichannel CEO bindings — low frequency
     socket.on("ceo_processing_command", (data: any) => {
         useStore.getState().updateAgent("ceo", { status: "active", action: "PENSANDO...", target: data.text });
-        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "ceo", text: `[Omni] Procesando: ${data.text} (Source: ${data.source})`, level: "info", timestamp: Date.now() });
     });
 
     socket.on("ceo_response", (data: any) => {
         useStore.getState().updateAgent("ceo", { status: "success", action: "HABLANDO", target: data.text });
-        useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "ceo", text: `[CEO] ${data.text}`, level: "info", timestamp: Date.now() });
         setTimeout(() => useStore.getState().updateAgent("ceo", { status: "idle", action: "MONITORIZANDO", target: "" }), 4000);
     });
 
+    // ⚡ Swarm alerts — throttled (1s)
+    let lastSwarmAlert = 0;
     socket.on("swarm_alert", (data: any) => {
+        const now = Date.now();
+        if (now - lastSwarmAlert < 1000) return;
+        lastSwarmAlert = now;
+
         const agMapping: Record<string, string> = {
             "1_axi_forex": "l3_axi",
             "2_crypto_majors": "l3_crypto",
