@@ -17,7 +17,7 @@ import { CEOAgent } from "../agents/CEOAgent";
 import { PaperExecutionEngine } from "../engine/PaperExecutionEngine";
 import { WebSocketManager, OHLCCandle, MarketTick } from "../utils/WebSocketManager";
 import { TelegramManager } from "../utils/TelegramManager";
-import { broadcastAgentState, broadcastAgentLog } from "../utils/SwarmEvents";
+import { broadcastAgentState, broadcastAgentLog, _getIoInstance } from "../utils/SwarmEvents";
 import { saveAgentMemory } from "../utils/supabaseClient";
 
 export class AILoop {
@@ -76,6 +76,15 @@ export class AILoop {
 
         // Conectar Telegram al CEO Agent
         this.wireTelegram();
+
+        // Relayar eventos del PaperEngine al Dashboard mediante Socket.io
+        const io = _getIoInstance();
+        if (io) {
+            this.paperEngine.on("pnl_update", (data) => io.emit("paper_pnl", data));
+            this.paperEngine.on("position_opened", (pos) => io.emit("paper_position_opened", pos));
+            this.paperEngine.on("position_closed", (pos) => io.emit("paper_position_closed", pos));
+            this.paperEngine.on("account_update", (data) => io.emit("paper_account", data));
+        }
 
         console.log("[AILoop] ✅ Pipeline conectado: WSS → Sentinel → Risk → Execute");
     }

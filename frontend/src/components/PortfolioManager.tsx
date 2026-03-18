@@ -20,7 +20,7 @@ const PortfolioManager: React.FC = () => {
     const equityCurve = useStore((s) => s.equityCurve);
     const latestPrices = useStore((s) => s.marketData);
 
-    const [infoModal, setInfoModal] = useState<string | null>(null);
+    const [infoModal, setInfoModal] = useState<PaperPosition | null>(null);
 
     const handleClose = (symbol: string) => {
         const socket = getSocket();
@@ -44,7 +44,9 @@ const PortfolioManager: React.FC = () => {
         const y = curveHeight - (((p.equity || 0) - minEq) / range) * curveHeight;
         return `${x},${y}`;
     }).join(" ");
-    const isPnlPositive = (account?.totalPnl || 0) >= 0;
+    const totalUnrealizedPnl = positions.reduce((acc, p) => acc + (p.unrealizedPnl || 0), 0);
+    const sessionTotalPnl = (account?.totalPnl || 0) + totalUnrealizedPnl;
+    const isPnlPositive = sessionTotalPnl >= 0;
     const curveColor = isPnlPositive ? "#22c55e" : "#ef4444";
 
     return (
@@ -110,13 +112,13 @@ const PortfolioManager: React.FC = () => {
                         <div className="flex items-center gap-2">
                              <div className={`w-1.5 h-1.5 rounded-full ${account?.dailyDrawdown < 3 ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />
                              <span className="text-[10px] font-mono text-[#f59e0b]">{account?.dailyDrawdown?.toFixed(2) || '0.00'}%</span>
-                             <span className="text-[8px] text-[#3a4555]">MAX: 5%</span>
+                             <span className="text-[8px] text-[#3a4555]">MAX: {account?.maxDrawdown?.toFixed(1)}%</span>
                         </div>
                     </div>
                     <div className="bg-[#0b0e14] p-3 flex flex-col gap-1">
                         <span className="text-[8px] font-black text-[#5a6577] uppercase tracking-widest">U-PnL Sesión</span>
-                        <div className={`text-[12px] font-black tabular-nums ${isPnlPositive ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                            {isPnlPositive ? '▲' : '▼'} ${Math.abs(account?.totalPnl || 0).toFixed(2)}
+                        <div className={`text-[12px] font-black tabular-nums ${totalUnrealizedPnl >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                            {totalUnrealizedPnl >= 0 ? '▲' : '▼'} ${Math.abs(totalUnrealizedPnl).toFixed(2)}
                         </div>
                     </div>
                 </div>
@@ -133,7 +135,7 @@ const PortfolioManager: React.FC = () => {
                             <th className="px-4 py-3 text-right">Tamaño (Notional)</th>
                             <th className="px-4 py-3 text-right">Apala.</th>
                             <th className="px-4 py-3 text-right">Entrada</th>
-                            <th className="px-4 py-3 text-right">Mercado</th>
+                            <th className="px-4 py-3 text-right">Stop Loss / Take Profit</th>
                             <th className="px-4 py-3 text-right">U-PnL (%)</th>
                             <th className="px-4 py-3 text-right">PnL ($)</th>
                             <th className="px-4 py-3 text-center">Ejecución</th>
@@ -163,6 +165,13 @@ const PortfolioManager: React.FC = () => {
                                                     <span className="bg-[#1a1f2e] text-[#8a95a7] px-1.5 py-0.5 rounded text-[8px] font-bold border border-[#1a1f2e]">PERP</span>
                                                 </div>
                                                 <span className="text-[9px] text-[#4a6cf7] font-bold uppercase mt-0.5">{pos.exchange}</span>
+                                                {pos.rationale && (
+                                                    <div className="mt-1 max-w-[180px]">
+                                                        <p className="text-[8px] text-[#5a6577] line-clamp-1 italic group-hover:text-[#8a95a7] transition-colors">
+                                                            "{pos.rationale}"
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3 text-center">
@@ -193,8 +202,14 @@ const PortfolioManager: React.FC = () => {
                                         <td className="px-4 py-3 text-right font-mono text-[11px] text-[#8a95a7]">
                                             ${(pos.entryPrice || 0).toFixed((pos.entryPrice || 0) < 1 ? 6 : 2)}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono text-[11px] text-white">
-                                            ${(live || 0).toFixed((live || 0) < 1 ? 6 : 2)}
+                                        <td className="px-4 py-3 text-right font-mono text-[10px] space-y-0.5">
+                                            <div className="text-[#ef4444]">SL: ${pos.stopLoss?.toFixed(pos.stopLoss < 1 ? 6 : 2) || '---'}</div>
+                                            <div className="text-[#22c55e]">TP: ${pos.takeProfit?.toFixed(pos.takeProfit < 1 ? 6 : 2) || '---'}</div>
+                                            {pos.trailingStop?.active && (
+                                                <div className="text-[#4a6cf7] text-[8px] font-black uppercase tracking-tighter animate-pulse">
+                                                    Trailing: {pos.trailingStop.callbackPct}%
+                                                </div>
+                                            )}
                                         </td>
                                         <td className={`px-4 py-3 text-right font-mono text-[11px] font-bold ${isProfit ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
                                             <div className="flex items-center justify-end gap-1">
@@ -208,7 +223,7 @@ const PortfolioManager: React.FC = () => {
                                         <td className="px-4 py-3">
                                             <div className="flex items-center justify-end gap-1.5">
                                                 <button
-                                                    onClick={() => setInfoModal(pos.rationale || "No hay justificación registrada para esta operación.")}
+                                                    onClick={() => setInfoModal(pos)}
                                                     className="px-2 py-1 bg-[#4a6cf7]/10 text-[#4a6cf7] border border-[#4a6cf7]/20 rounded text-[9px] font-black hover:bg-[#4a6cf7] hover:text-white transition-all uppercase flex items-center gap-1"
                                                 >
                                                     <Info size={10} /> INFO
@@ -239,8 +254,8 @@ const PortfolioManager: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-4 text-[11px] font-mono">
                     <span className="text-[#3a4555]">BALANCE CASH: <span className="text-white">${account?.balance?.toLocaleString() || '0'}</span></span>
-                    <span className="text-[#3a4555]">PNL TOTAL: <span className={isPnlPositive ? 'text-[#22c55e]' : 'text-[#ef4444]'}>
-                        {isPnlPositive ? '+' : ''}{account?.totalPnl?.toFixed(2) || '0.00'}
+                    <span className="text-[#3a4555]">PNL TOTAL (SESSION): <span className={isPnlPositive ? 'text-[#22c55e]' : 'text-[#ef4444]'}>
+                        {isPnlPositive ? '+' : ''}{sessionTotalPnl?.toFixed(2) || '0.00'}
                     </span></span>
                 </div>
             </div>
@@ -252,23 +267,91 @@ const PortfolioManager: React.FC = () => {
                         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1a1f2e] bg-[#0d1117] rounded-t-xl">
                             <div className="flex items-center gap-3 text-[#4a6cf7]">
                                 <div className="p-1.5 bg-[#4a6cf7]/10 rounded border border-[#4a6cf7]/20">
-                                    <Info size={16} />
+                                    <ShieldCheck size={16} />
                                 </div>
                                 <div>
-                                    <h3 className="font-black text-sm uppercase tracking-widest text-white leading-none">Justificación de Ejecución IA</h3>
-                                    <span className="text-[10px] text-[#5a6577] font-mono">Análisis profundo capturado de la lógica del Enjambre</span>
+                                    <h3 className="font-black text-xs uppercase tracking-[0.2em] text-white leading-none">Detalles del Trade: {infoModal.symbol}</h3>
+                                    <span className="text-[9px] text-[#5a6577] font-mono uppercase">Lógica de Ejecución y Gestión de Riesgo</span>
                                 </div>
                             </div>
                             <button onClick={() => setInfoModal(null)} className="text-[#5a6577] hover:text-white p-2 rounded-lg hover:bg-[#1a1f2e] transition-colors">
                                 <X size={16} />
                             </button>
                         </div>
-                        <div className="p-6 overflow-y-auto font-mono text-[11px] text-[#c9d1d9] leading-relaxed whitespace-pre-wrap selection:bg-[#4a6cf7]/30 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsIDI1NSwgMjU1LCAwLjAzKSIvPgo8L3N2Zz4=')]">
-                            {infoModal.split('\n').map((line, i) => (
-                                <React.Fragment key={i}>
-                                    {line}<br />
-                                </React.Fragment>
-                            ))}
+                        
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#0b0e14]">
+                            {/* Technicals Grid */}
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="bg-[#0d1117] border border-[#1a1f2e] p-3 rounded-lg">
+                                    <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Precio Entrada</span>
+                                    <span className="text-white font-mono text-sm">${infoModal.entryPrice.toLocaleString()}</span>
+                                </div>
+                                <div className="bg-[#0d1117] border border-[#1a1f2e] p-3 rounded-lg text-center">
+                                    <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Dirección</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${infoModal.side === 'LONG' ? 'bg-[#22c55e]/10 text-[#22c55e]' : 'bg-[#ef4444]/10 text-[#ef4444]'}`}>
+                                        {infoModal.side}
+                                    </span>
+                                </div>
+                                <div className="bg-[#0d1117] border border-[#1a1f2e] p-3 rounded-lg text-right">
+                                    <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Apalancamiento</span>
+                                    <span className="text-[#4a6cf7] font-mono text-sm">{infoModal.leverage}x</span>
+                                </div>
+                            </div>
+
+                            {/* Risk Setup */}
+                            <div className="bg-[#0d1117] border border-[#1a1f2e] rounded-lg overflow-hidden">
+                                <div className="px-4 py-2 border-b border-[#131820] bg-[#111622] flex items-center justify-between">
+                                    <span className="text-[9px] font-black text-[#8a95a7] uppercase tracking-widest">Configuración de Riesgo</span>
+                                    {infoModal.trailingStop?.active && (
+                                        <span className="text-[8px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded font-black border border-blue-500/20 animate-pulse">TRAILING ACTIVE</span>
+                                    )}
+                                </div>
+                                <div className="p-4 grid grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Stop Loss</span>
+                                            <span className="text-[#ef4444] font-mono text-sm tracking-tight">
+                                                ${infoModal.stopLoss?.toFixed(2) || 'NONE'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Take Profit</span>
+                                            <span className="text-[#22c55e] font-mono text-sm tracking-tight">
+                                                ${infoModal.takeProfit?.toFixed(2) || 'NONE'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="border-l border-[#1a1f2e] pl-6 space-y-4">
+                                        <div>
+                                            <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Trailing Percent</span>
+                                            <span className="text-[#4a6cf7] font-mono text-sm tracking-tight">
+                                                {infoModal.trailingStop?.callbackPct ? `${infoModal.trailingStop.callbackPct}%` : 'OFF'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[8px] text-[#5a6577] font-black uppercase block mb-1">Ejecutado por Agent</span>
+                                            <span className="text-white font-mono text-[10px] uppercase truncate block">
+                                                {infoModal.openedBy}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Rationale Section */}
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-[1px] flex-1 bg-gradient-to-r from-[#4a6cf7]/50 to-transparent"></div>
+                                    <span className="text-[10px] font-black text-[#4a6cf7] uppercase tracking-[0.2em] whitespace-nowrap">Auditoría de IA</span>
+                                    <div className="h-[1px] flex-1 bg-gradient-to-l from-[#4a6cf7]/50 to-transparent"></div>
+                                </div>
+                                <div className="bg-[#0d1117] border border-[#1a1f2e] p-6 rounded-xl shadow-inner relative overflow-hidden group">
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-[#4a6cf7]"></div>
+                                    <p className="font-mono text-[12px] text-[#e6edf3] leading-[1.8] whitespace-pre-wrap">
+                                        {infoModal.rationale || "Sin detalles adicionales del razonamiento."}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

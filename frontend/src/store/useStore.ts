@@ -52,7 +52,7 @@ export interface MarketTick { type: "TICK"; source: string; symbol: string; pric
 export interface OHLCCandle { type: "KLINE"; source: string; symbol: string; interval: string; open: number; high: number; low: number; close: number; volume: number; timestamp: number; isClosed: boolean; }
 export interface OrderBookLevel { price: number; size: number; total: number; }
 export interface TapeEntry { id: string; symbol: string; price: number; size: number; side: "buy" | "sell"; source: string; timestamp: number; }
-export interface PaperPosition { id: string; symbol: string; exchange: string; side: "LONG" | "SHORT"; entryPrice: number; quantity: number; notionalValue: number; unrealizedPnl: number; unrealizedPnlPct: number; stopLoss: number | null; takeProfit: number | null; leverage: number; openedAt: number; rationale?: string; openedBy?: string; }
+export interface PaperPosition { id: string; symbol: string; exchange: string; side: "LONG" | "SHORT"; entryPrice: number; quantity: number; notionalValue: number; unrealizedPnl: number; unrealizedPnlPct: number; stopLoss: number | null; takeProfit: number | null; trailingStop?: { activationPct: number; callbackPct: number; active: boolean; } | null; leverage: number; openedAt: number; rationale?: string; openedBy?: string; }
 export interface EquityPoint { time: number; equity: number; }
 export interface AgentLog { id: string; agent_id: string; text: string; level: "info" | "warn" | "error" | "success"; type?: string; message?: string; timestamp: number; }
 export type AgentLogEntry = AgentLog;

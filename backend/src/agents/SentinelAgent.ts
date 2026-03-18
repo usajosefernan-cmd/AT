@@ -73,7 +73,7 @@ Responde SIEMPRE en JSON con este esquema exacto:
   "stop_loss_pct": number,
   "take_profit_pct": number,
   "notional_usd": number,
-  "rationale": "Explicación breve usando los indicadores calculados",
+  "rationale": "ANÁLISIS TÉCNICO DETALLADO: (1) Estructura de precio, (2) Cruces de indicadores (EMA/RSI), (3) Análisis de Volumen, (4) Justificación de la ventaja estadística (Edge). Sé extremadamente detallista.",
   "timeframe": "15m",
   "indicators_used": ["rsi", "ema_cross", "volume_spike", ...]
 }`;

@@ -72,54 +72,71 @@ export default function CostTracker() {
     }, [connected]);
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex flex-col gap-3 mt-4">
-            <h3 className="text-slate-400 text-xs font-mono uppercase flex items-center gap-2">
-                <Cpu size={14} className="text-blue-400" />
-                Telemetría API Groq
-            </h3>
-
-            <div className="grid grid-cols-2 gap-4">
-                {/* Métricas de Sesión */}
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/50">
-                    <p className="text-slate-500 text-[10px] uppercase mb-1">Gasto de Sesión</p>
-                    <div className="flex items-center text-emerald-400 font-mono text-lg">
-                        <DollarSign size={16} />
-                        {sessionCost.toFixed(6)}
+        <div className="bg-[#0b0e14] border border-[#1a1f2e] rounded-xl p-4 flex flex-col gap-4 shadow-2xl relative overflow-hidden group">
+            {/* Ambient Background Gradient */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#4a6cf7]/5 blur-[60px] pointer-events-none group-hover:bg-[#4a6cf7]/10 transition-colors" />
+            
+            <div className="flex items-center justify-between">
+                <h3 className="text-[#5a6577] text-[9px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#4a6cf7]/10 border border-[#4a6cf7]/20">
+                        <Cpu size={12} className="text-[#4a6cf7]" />
                     </div>
-                </div>
+                    Telemetría Neural (API)
+                </h3>
+                {!historyLoading && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#22c55e]/5 border border-[#22c55e]/20">
+                        <span className="w-1 h-1 rounded-full bg-[#22c55e] animate-pulse" />
+                        <span className="text-[8px] font-bold text-[#22c55e]">SYNC</span>
+                    </div>
+                )}
+            </div>
 
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/50">
-                    <p className="text-slate-500 text-[10px] uppercase mb-1">Tokens Procesados</p>
-                    <div className="flex items-center text-blue-400 font-mono text-lg">
-                        <Zap size={16} className="mr-1" />
+            <div className="grid grid-cols-2 gap-3">
+                {/* Métricas de Sesión */}
+                <div className="bg-[#111622]/50 p-3 rounded-xl border border-[#1a1f2e] hover:border-[#4a6cf7]/30 transition-all">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <Zap size={10} className="text-[#4a6cf7]" />
+                        <p className="text-[#3a4555] text-[8px] font-black uppercase tracking-tighter">Session Tokens</p>
+                    </div>
+                    <div className="text-white font-mono text-sm font-bold tabular-nums">
                         {sessionTokens.toLocaleString()}
                     </div>
                 </div>
 
-                {/* Métricas Históricas */}
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/50">
-                    <p className="text-slate-500 text-[10px] uppercase mb-1 flex items-center gap-1">
-                        <Calendar size={10} /> Gasto Diario
-                    </p>
-                    <div className="flex items-center text-emerald-500/80 font-mono text-sm">
-                        <DollarSign size={14} />
-                        {historyLoading ? "..." : dailyCost.toFixed(4)}
+                <div className="bg-[#111622]/50 p-3 rounded-xl border border-[#1a1f2e] hover:border-[#22c55e]/30 transition-all">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                        <DollarSign size={10} className="text-[#22c55e]" />
+                        <p className="text-[#3a4555] text-[8px] font-black uppercase tracking-tighter">Session Cost</p>
+                    </div>
+                    <div className="text-[#22c55e] font-mono text-sm font-bold tabular-nums">
+                        ${sessionCost.toFixed(5)}
                     </div>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/50">
-                    <p className="text-slate-500 text-[10px] uppercase mb-1 flex items-center gap-1">
-                        <History size={10} /> Coste Total (Vida)
-                    </p>
-                    <div className="flex items-center text-emerald-600 font-mono text-sm">
-                        <DollarSign size={14} />
-                        {historyLoading ? "..." : totalCost.toFixed(4)}
+                {/* Métricas Históricas */}
+                <div className="bg-[#0d1117] p-3 rounded-xl border border-[#1a1f2e] flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1 text-[#3a4555]">
+                        <Calendar size={10} />
+                        <span className="text-[8px] font-black uppercase tracking-tighter">Diario</span>
+                    </div>
+                    <div className="text-[#8a95a7] font-mono text-[11px] font-bold">
+                        ${historyLoading ? "..." : dailyCost.toFixed(4)}
+                    </div>
+                </div>
+
+                <div className="bg-[#0d1117] p-3 rounded-xl border border-[#1a1f2e] flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 mb-1 text-[#3a4555]">
+                        <History size={10} />
+                        <span className="text-[8px] font-black uppercase tracking-tighter">Total</span>
+                    </div>
+                    <div className="text-[#f59e0b] font-mono text-[11px] font-bold">
+                        ${historyLoading ? "..." : totalCost.toFixed(4)}
                     </div>
                 </div>
             </div>
 
-            <div className="text-[10px] text-slate-600 font-mono text-right">
-                *Datos reales sincronizados desde Supabase
+            <div className="text-[8px] text-[#2a3545] font-black uppercase tracking-[0.1em] text-right mt-1">
+                * Real-time audit (Supabase Sync)
             </div>
         </div>
     );

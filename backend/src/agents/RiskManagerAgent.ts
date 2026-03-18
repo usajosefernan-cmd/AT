@@ -22,7 +22,7 @@
 import { askGroq } from "../ai/LLMService";
 import { TradeSignal } from "./SentinelAgent";
 import { TOOL_DEFINITIONS, ToolExecutor } from "../tools/TradingTools";
-import { AXI_SELECT_RULES, isMarketOpen, validateOrderSize } from "../config/ExchangeManager";
+import { AXI_SELECT_RULES, MARKET_RULES, isMarketOpen, validateOrderSize } from "../config/ExchangeManager";
 import { PaperExecutionEngine } from "../engine/PaperExecutionEngine";
 import { broadcastAgentState, broadcastAgentLog } from "../utils/SwarmEvents";
 import { saveAgentMemory, getPaperBalance } from "../utils/supabaseClient";
@@ -31,7 +31,7 @@ import { saveAgentMemory, getPaperBalance } from "../utils/supabaseClient";
 // System Prompt — Risk Manager (el guardián)
 // ═══════════════════════════════════════════
 
-const RISK_MANAGER_SYSTEM_PROMPT = `Eres el Risk Manager de un hedge fund algorítmico. Tu trabajo es PROTEGER el capital y NEGOCIAR EL RIESGO con los analistas.
+const getSystemPrompt = () => `Eres el Risk Manager de un hedge fund algorítmico. Tu trabajo es PROTEGER el capital y NEGOCIAR EL RIESGO con los analistas.
 
 NUNCA ejecutas un trade a ciegas. La señal que recibes PASÓ los filtros matemáticos básicos, pero debes evaluarla:
 1. ¿Hay eventos macro importantes hoy (FOMC, NFP, CPI) que invaliden la señal?
@@ -149,7 +149,7 @@ export class RiskManagerAgent {
         // ─── Filter 3: Weekend prohibition ───
         // ONLY applies to forex/equities. Crypto (hyperliquid, mexc) trades 24/7/365.
         const cryptoExchanges = ["hyperliquid", "mexc"];
-        const isCryptoExchange = cryptoExchanges.includes(signal.exchange);
+        const isCryptoExchange = cryptoExchanges.includes(signal.exchange.toLowerCase());
         const now = new Date();
         const utcDay = now.getUTCDay();
         const utcHour = now.getUTCHours();
@@ -268,7 +268,9 @@ export class RiskManagerAgent {
                     order_type: "MARKET",
                     stop_loss_pct: signal.stop_loss_pct,
                     take_profit_pct: signal.take_profit_pct,
-                    rationale: `${signal.rationale} [AGGRESSIVE SCALP]`,
+                    leverage: (signal as any).leverage || MARKET_RULES.crypto.maxLeverage || 1,
+                    trailing_stop_pct: (signal as any).trailing_stop_pct || 0.5, // Default 0.5% for aggressive scalp
+                    rationale: `${signal.rationale} [AGGRESSIVE SCALPER]`,
                 });
                 const resultObj = JSON.parse(toolResult);
 
@@ -319,7 +321,7 @@ Fecha/hora UTC: ${new Date().toUTCString()}
 Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSON:
 {
   "decision": "APPROVE" | "REJECT" | "REJECT_WITH_FEEDBACK",
-  "reason": "Explicación breve que recibirá el especialista como feedback",
+  "reason": "Explicación DETALLADÍSIMA del razonamiento de riesgo (ej: liquidez, drawdown, correlación, sentimiento macro)",
   "macro_risk": "LOW" | "MEDIUM" | "HIGH"
 }`;
 
@@ -328,7 +330,7 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
                 reason: string;
                 macro_risk: string;
             }>(
-                RISK_MANAGER_SYSTEM_PROMPT,
+                getSystemPrompt(),
                 userPrompt,
                 { temperature: 0.0, maxTokens: 300, jsonMode: true }
             );
@@ -343,6 +345,8 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
 
             if (approved) {
                 // Execute the trade via ToolExecutor
+                const leverageVal = (signal as any).leverage || (signal.exchange.toLowerCase() === 'hyperliquid' ? MARKET_RULES.crypto.maxLeverage : 1);
+                
                 const toolResult = await this.toolExecutor.execute("execute_trade", {
                     exchange: signal.exchange,
                     symbol: signal.symbol,
@@ -351,7 +355,9 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
                     order_type: "MARKET",
                     stop_loss_pct: signal.stop_loss_pct,
                     take_profit_pct: signal.take_profit_pct,
-                    rationale: `${signal.rationale} | Macro: ${decision.reason}`,
+                    leverage: leverageVal,
+                    trailing_stop_pct: (signal as any).trailing_stop_pct || 0,
+                    rationale: `[TÉCNICO]: ${signal.rationale}\n\n[RIESGO/MACRO]: ${decision.reason}`,
                 });
                 const resultObj = JSON.parse(toolResult);
 

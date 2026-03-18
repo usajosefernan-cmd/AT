@@ -17,9 +17,17 @@ export interface PaperPosition {
     notionalValue: number;      // Valor en la moneda de cotización al momento de la entrada
     stopLoss: number | null;
     takeProfit: number | null;
+    trailingStop?: {
+        activationPct: number;
+        callbackPct: number;
+        active: boolean;
+        highestPrice?: number;
+        lowestPrice?: number;
+    } | null;
     openedAt: number;            // Unix timestamp ms
     status: "OPEN" | "CLOSED_TP" | "CLOSED_SL" | "CLOSED_MANUAL";
     unrealizedPnl: number;      // Se actualiza en cada tick real
+    unrealizedPnlPct: number;   // Levered PnL %
     realizedPnl: number;        // Se fija al cerrar
     closedAt?: number;
     closePrice?: number;
@@ -95,6 +103,23 @@ export class PaperExecutionEngine extends EventEmitter {
             this.maxTotalDrawdownPct = num;
             console.log(`[PaperEngine] ✅ maxTotalDrawdownPct → ${num}%`);
         }
+
+        // Handle initial balance updates dynamically
+        if (key.includes("balance") || key === "risk_initial_balance") {
+            const oldInitial = this.account.initialBalance;
+            this.account.initialBalance = num;
+            
+            // If the user hasn't started trading much, or explicitly wants to sync current balance
+            if (this.account.balance === oldInitial || this.account.closedPositions.length === 0) {
+                 this.account.balance = num;
+                 this.account.dailyStartBalance = num;
+                 this.account.peakBalance = num;
+                 console.log(`[PaperEngine] ✅ Syncing current balance to initial: $${num}`);
+            }
+            
+            console.log(`[PaperEngine] ✅ initialBalance updated → $${num}`);
+            this.emitAccountUpdate();
+        }
     }
 
     /**
@@ -120,13 +145,40 @@ export class PaperExecutionEngine extends EventEmitter {
             const direction = pos.side === "LONG" ? 1 : -1;
             pos.unrealizedPnl = priceDiff * pos.quantity * direction;
 
+            const margin = pos.notionalValue / pos.leverage;
+            const leveredPct = margin > 0 ? (pos.unrealizedPnl / margin) * 100 : 0;
+            pos.unrealizedPnlPct = leveredPct;
+
             this.emit("pnl_update", {
                 positionId: id,
                 unrealizedPnl: pos.unrealizedPnl,
+                unrealizedPnlPct: leveredPct,
                 currentPrice: tick.price,
                 entryPrice: pos.entryPrice,
-                pnlPercent: ((tick.price - pos.entryPrice) / pos.entryPrice) * 100 * direction,
             });
+
+            // --- Check Trailing Stop ---
+            if (pos.trailingStop && pos.trailingStop.active) {
+                if (pos.side === 'LONG') {
+                    if (tick.price > (pos.trailingStop.highestPrice || 0)) {
+                        pos.trailingStop.highestPrice = tick.price;
+                        // Move SL up
+                        const newSL = tick.price * (1 - pos.trailingStop.callbackPct / 100);
+                        if (pos.stopLoss === null || newSL > pos.stopLoss) {
+                            pos.stopLoss = newSL;
+                        }
+                    }
+                } else {
+                    if (tick.price < (pos.trailingStop.lowestPrice || Infinity)) {
+                        pos.trailingStop.lowestPrice = tick.price;
+                        // Move SL down
+                        const newSL = tick.price * (1 + pos.trailingStop.callbackPct / 100);
+                        if (pos.stopLoss === null || newSL < pos.stopLoss) {
+                            pos.stopLoss = newSL;
+                        }
+                    }
+                }
+            }
 
             // --- Check Stop Loss ---
             if (pos.stopLoss !== null) {
@@ -159,6 +211,7 @@ export class PaperExecutionEngine extends EventEmitter {
 
         // Balance equity check (balance + sum of unrealized PnL)
         this.checkDrawdownLimits();
+        this.emitAccountUpdate();
     }
 
     /**
@@ -170,24 +223,35 @@ export class PaperExecutionEngine extends EventEmitter {
         exchange?: string;
         side: "LONG" | "SHORT";
         entryPrice: number;
-        notionalValue: number;   // Cuántos USDT/USD invertir
+        notionalValue: number;   // Cuántos USDT/USD representan la posición (size * price)
         leverage?: number;
         stopLoss?: number;
         takeProfit?: number;
+        trailingStopPct?: number;
         rationale?: string;
         openedBy?: string;
     }): PaperPosition | null {
+        const leverage = params.leverage || 1;
+        const requiredMargin = params.notionalValue / leverage;
 
-        // Pre-check: ¿hay saldo suficiente?
-        if (params.notionalValue > this.account.balance) {
-            console.warn(`[PaperEngine] REJECTED: Insufficient virtual balance. Need $${params.notionalValue}, have $${this.account.balance.toFixed(2)}`);
-            broadcastAgentState("risk", "order_rejected", "Insufficient Balance", "error");
+        // Pre-check: ¿hay margen disponible suficiente?
+        // En este modelo, el margen no se debita de 'balance', sino que se 'bloquea'.
+        // available_margin = balance + unrealizedPnL - used_margins (pero lo simplificamos a balance - used_margins)
+        let totalUsedMargin = 0;
+        for (const p of this.account.positions.values()) {
+            totalUsedMargin += p.notionalValue / p.leverage;
+        }
+
+        const availableMargin = this.account.balance - totalUsedMargin;
+
+        if (requiredMargin > availableMargin) {
+            console.warn(`[PaperEngine] REJECTED: Insufficient Margin. Need $${requiredMargin.toFixed(2)}, have $${availableMargin.toFixed(2)}`);
+            broadcastAgentState("risk", "order_rejected", "Insufficient Margin", "error");
             return null;
         }
 
         // Pre-check: ¿drawdown permite operar?
         const ddPct = this.getDailyDrawdownPct();
-        console.log(`[PaperEngine] DD Check: daily=${ddPct.toFixed(2)}% / limit=${this.maxDailyDrawdownPct}% | startBal=$${this.account.dailyStartBalance} equity=$${this.getEquity().toFixed(2)}`);
         if (ddPct > 0 && ddPct >= this.maxDailyDrawdownPct) {
             console.warn("[PaperEngine] REJECTED: Daily drawdown limit reached.");
             broadcastAgentState("risk", "order_rejected", "DD Limit Breached", "error");
@@ -203,11 +267,18 @@ export class PaperExecutionEngine extends EventEmitter {
             exchange: params.exchange || "UNKNOWN",
             side: params.side,
             entryPrice: params.entryPrice,
-            leverage: params.leverage || 1,
+            leverage: leverage,
             quantity,
             notionalValue: params.notionalValue,
             stopLoss: params.stopLoss ?? null,
             takeProfit: params.takeProfit ?? null,
+            trailingStop: params.trailingStopPct ? {
+                activationPct: 0, // Inmediato por ahora
+                callbackPct: params.trailingStopPct,
+                active: true,
+                highestPrice: params.side === 'LONG' ? params.entryPrice : undefined,
+                lowestPrice: params.side === 'SHORT' ? params.entryPrice : undefined
+            } : null,
             openedAt: Date.now(),
             status: "OPEN",
             unrealizedPnl: 0,
@@ -217,12 +288,12 @@ export class PaperExecutionEngine extends EventEmitter {
         };
 
 
-        // Debitar del saldo virtual
-        this.account.balance -= params.notionalValue;
+        // En el modelo de Margen, NO debitamos el notional del balance.
+        // El balance solo cambia por PnL realizado.
         this.account.positions.set(id, position);
 
-        console.log(`[PaperEngine] 📥 OPENED ${params.side} ${params.symbol} | Qty: ${quantity.toFixed(6)} @ $${params.entryPrice.toFixed(2)} | Notional: $${params.notionalValue}`);
-        broadcastAgentState("risk", "position_opened", `${params.side} ${params.symbol}`, "success");
+        console.log(`[PaperEngine] 📥 OPENED ${params.side} ${params.symbol} | Lev: ${leverage}x | Qty: ${quantity.toFixed(6)} @ $${params.entryPrice.toFixed(2)} | Notional: $${params.notionalValue}`);
+        broadcastAgentState("risk", "position_opened", `${params.side} ${params.symbol} (${leverage}x)`, "success");
 
         this.emit("position_opened", position);
         this.emitAccountUpdate();
@@ -245,16 +316,16 @@ export class PaperExecutionEngine extends EventEmitter {
         }
 
         // Calcular PnL realizado final
-        const priceDiff = closePrice - pos.entryPrice;
         const direction = pos.side === "LONG" ? 1 : -1;
+        const priceDiff = closePrice - pos.entryPrice;
         pos.realizedPnl = priceDiff * pos.quantity * direction;
         pos.unrealizedPnl = 0;
         pos.status = reason;
         pos.closedAt = Date.now();
         pos.closePrice = closePrice;
 
-        // Devolver al saldo: notional original + PnL
-        this.account.balance += pos.notionalValue + pos.realizedPnl;
+        // Actualizar balance con el PnL realizado
+        this.account.balance += pos.realizedPnl;
         this.account.totalPnl += pos.realizedPnl;
 
         // Update peak balance for drawdown tracking
@@ -373,22 +444,25 @@ export class PaperExecutionEngine extends EventEmitter {
 
     /** Snapshot de las posiciones abiertas (para enviar al Frontend) */
     public getOpenPositionsSnapshot() {
-        return Array.from(this.account.positions.values()).map(p => ({
-            id: p.id,
-            symbol: p.symbol,
-            exchange: p.exchange,
-            side: p.side,
-            entryPrice: p.entryPrice,
-            leverage: p.leverage,
-            quantity: p.quantity,
-            notionalValue: p.notionalValue,
-            unrealizedPnl: p.unrealizedPnl,
-            unrealizedPnlPct: ((p.unrealizedPnl / p.notionalValue) * 100),
-            stopLoss: p.stopLoss,
-            takeProfit: p.takeProfit,
-            openedAt: p.openedAt,
-            rationale: p.rationale,
-            openedBy: p.openedBy,
-        }));
+        return Array.from(this.account.positions.values()).map(p => {
+            const margin = p.notionalValue / p.leverage;
+            return {
+                id: p.id,
+                symbol: p.symbol,
+                exchange: p.exchange,
+                side: p.side,
+                entryPrice: p.entryPrice,
+                leverage: p.leverage,
+                quantity: p.quantity,
+                notionalValue: p.notionalValue,
+                unrealizedPnl: p.unrealizedPnl,
+                unrealizedPnlPct: margin > 0 ? (p.unrealizedPnl / margin) * 100 : 0,
+                stopLoss: p.stopLoss,
+                takeProfit: p.takeProfit,
+                openedAt: p.openedAt,
+                rationale: p.rationale,
+                openedBy: p.openedBy,
+            };
+        });
     }
 }

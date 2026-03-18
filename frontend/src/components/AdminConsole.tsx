@@ -120,55 +120,12 @@ const AdminConsole: React.FC = () => {
             const failures = results.filter(r => !r.success);
 
             // 2) Hot-reload: enviar risk_* Y market_* al backend para actualizar MARKET_RULES + AXI_SELECT_RULES
-            const payload: any = {
-            // Agent directives
-            agent_ceo_mission: configs.agent_ceo_mission,
-            agent_risk_strict: configs.agent_risk_strict,
-            agent_sentiment_threshold: Number(configs.agent_sentiment_threshold),
-            // API keys
-            mexc_api_key: configs.mexc_api_key,
-            mexc_api_secret: configs.mexc_api_secret,
-            openai_api_key: configs.openai_api_key,
-            hyperliquid_wallet: configs.hyperliquid_wallet,
-            hyperliquid_private_key: configs.hyperliquid_private_key,
-            market_rules: {}
-        };
-
-        const marketRules: Record<string, any> = {};
-        for (const [key, val] of Object.entries(configs)) {
-            if (key.startsWith('market_')) {
-                const parts = key.split('_');
-                // Could be market_crypto_daily_dd or market_small_caps_leverage
-                const typeIndex = parts.indexOf('crypto') !== -1 ? parts.indexOf('crypto') :
-                                  parts.indexOf('memecoins') !== -1 ? parts.indexOf('memecoins') :
-                                  parts.indexOf('equities') !== -1 ? parts.indexOf('equities') :
-                                  parts.indexOf('forex') !== -1 ? parts.indexOf('forex') :
-                                  parts.indexOf('caps') !== -1 ? parts.indexOf('caps') : -1;
-                
-                if (typeIndex !== -1) {
-                    const marketId = parts.slice(1, typeIndex + 1).join('_');
-                    const field = parts.slice(typeIndex + 1).join('_');
-                    
-                    if (!marketRules[marketId]) marketRules[marketId] = {};
-                    
-                    if (field === 'daily_dd') marketRules[marketId].maxDailyDrawdownPct = Number(val);
-                    if (field === 'total_dd') marketRules[marketId].maxTotalDrawdownPct = Number(val);
-                    if (field === 'max_notional') marketRules[marketId].maxNotionalPerTrade = Number(val);
-                    if (field === 'balance') marketRules[marketId].initialBalance = Number(val);
-                    
-                    if (field === 'leverage') marketRules[marketId].maxLeverage = Number(val);
-                    if (field === 'position_pct') marketRules[marketId].maxPositionPct = Number(val);
-                    if (field === 'risk_per_trade') marketRules[marketId].maxRiskPerTradePct = Number(val);
-                    if (field === 'hold_minutes') marketRules[marketId].maxHoldMinutes = Number(val);
-                }
-            }
-        }
-        payload.markets = marketRules;
-            
+            // 2) Hot-reload: Enviar el objeto de configs directamente para sincronización real
+            // El backend iterará sobre las keys y actualizará el motor en caliente.
             await fetch(`${API}/api/config/risk`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(configs),
             });
 
             if (failures.length > 0) {

@@ -60,6 +60,10 @@ export const TOOL_DEFINITIONS = [
                         type: "number",
                         description: "Take Profit como porcentaje desde el precio de entrada (ej: 4.0 = 4%).",
                     },
+                    trailing_stop_pct: {
+                        type: "number",
+                        description: "Trailing Stop como porcentaje (opcional). Si se activa, el SL seguirá al precio.",
+                    },
                     rationale: {
                         type: "string",
                         description: "Justificación breve de por qué se ejecuta esta operación.",
@@ -231,6 +235,7 @@ export class ToolExecutor {
         order_type: string;
         stop_loss_pct: number;
         take_profit_pct: number;
+        trailing_stop_pct?: number;
         rationale: string;
         opened_by?: string;
     }): Promise<string> {
@@ -267,6 +272,7 @@ export class ToolExecutor {
                 leverage: args.leverage || 1,
                 stopLoss,
                 takeProfit,
+                trailingStopPct: args.trailing_stop_pct,
                 rationale: args.rationale,
                 openedBy: args.opened_by,
             });

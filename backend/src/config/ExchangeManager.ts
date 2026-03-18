@@ -278,6 +278,7 @@ export function updateRule(key: string, value: any) {
             if (field === 'position_pct') MARKET_RULES[market].maxPositionPct = numVal;
             if (field === 'risk_per_trade') MARKET_RULES[market].maxRiskPerTradePct = numVal;
             if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
+            if (field === 'balance') (MARKET_RULES[market] as any).initialBalance = numVal;
             console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
             return;
         }
