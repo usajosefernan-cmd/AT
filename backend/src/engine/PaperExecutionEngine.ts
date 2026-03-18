@@ -49,13 +49,14 @@ export interface PaperAccount {
     totalPnl: number;
 }
 
-export const MARKET_IDS = ["crypto", "memecoins", "equities", "forex", "small_caps"];
+export const MARKET_IDS = ["crypto", "meme", "trad_free", "axi", "small_caps"];
 
 export function inferMarketId(exchange?: string): string {
     const ex = (exchange || "").toLowerCase();
-    if (ex === "axi") return "forex";
-    if (ex === "alpaca") return "equities";
-    if (ex === "hyperliquid" || ex === "mexc" || ex === "binance") return "crypto";
+    if (ex.includes("axi")) return "axi";
+    if (ex.includes("alpaca")) return "trad_free";
+    if (ex.includes("mexc")) return "meme";
+    if (ex.includes("hyperliquid") || ex.includes("aster") || ex.includes("binance")) return "crypto";
     return "crypto"; // default fallback
 }
 

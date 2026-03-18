@@ -230,7 +230,7 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         enabled: true,
         credentials: { hl_wss: "wss://api.hyperliquid.xyz/ws", aster_wss: "wss://api.aster.exchange/ws" },
     },
-    memecoins: {
+    meme: {
         maxLeverage: 1,
         maxPositionPct: 10,
         maxRiskPerTradePct: 2,
@@ -241,7 +241,7 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         enabled: true,
         credentials: { mexc_wss: "wss://wbs.mexc.com/ws" },
     },
-    equities: {
+    trad_free: {
         maxLeverage: 1,
         maxPositionPct: 25,
         maxRiskPerTradePct: 3,
@@ -252,7 +252,7 @@ export const MARKET_RULES: Record<string, MarketRuleSet> = {
         enabled: true,
         credentials: { alpaca_wss: "wss://stream.data.alpaca.markets/v2/iex" },
     },
-    forex: {
+    axi: {
         maxLeverage: 30,
         maxPositionPct: 20,
         maxRiskPerTradePct: 2,

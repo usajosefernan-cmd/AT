@@ -37,21 +37,21 @@ const defaultConfig: ConfigState = {
     market_crypto_hl_wallet: "", market_crypto_hl_pk: "", market_crypto_hl_wss: "wss://api.hyperliquid.xyz/ws",
     market_crypto_aster_key: "", market_crypto_aster_secret: "", market_crypto_aster_wss: "wss://api.aster.exchange/ws",
 
-    market_memecoins_daily_dd: "5", market_memecoins_total_dd: "10", market_memecoins_max_notional: "5000", market_memecoins_balance: "10000",
-    market_memecoins_leverage: "1", market_memecoins_position_pct: "10", market_memecoins_risk_per_trade: "2", market_memecoins_hold_minutes: "60",
-    market_memecoins_mode: "paper", market_memecoins_enabled: "true",
-    market_memecoins_mexc_key: "", market_memecoins_mexc_secret: "", market_memecoins_mexc_wss: "wss://wbs.mexc.com/ws",
+    market_meme_daily_dd: "5", market_meme_total_dd: "10", market_meme_max_notional: "5000", market_meme_balance: "10000",
+    market_meme_leverage: "1", market_meme_position_pct: "10", market_meme_risk_per_trade: "2", market_meme_hold_minutes: "60",
+    market_meme_mode: "paper", market_meme_enabled: "true",
+    market_meme_mexc_key: "", market_meme_mexc_secret: "", market_meme_mexc_wss: "wss://wbs.mexc.com/ws",
 
-    market_equities_daily_dd: "5", market_equities_total_dd: "10", market_equities_max_notional: "5000", market_equities_balance: "10000",
-    market_equities_leverage: "1", market_equities_position_pct: "25", market_equities_risk_per_trade: "3", market_equities_hold_minutes: "0",
-    market_equities_mode: "paper", market_equities_enabled: "true",
-    market_equities_alpaca_key: "", market_equities_alpaca_secret: "", market_equities_alpaca_wss: "wss://stream.data.alpaca.markets/v2/iex",
+    market_trad_free_daily_dd: "5", market_trad_free_total_dd: "10", market_trad_free_max_notional: "5000", market_trad_free_balance: "10000",
+    market_trad_free_leverage: "1", market_trad_free_position_pct: "25", market_trad_free_risk_per_trade: "3", market_trad_free_hold_minutes: "0",
+    market_trad_free_mode: "paper", market_trad_free_enabled: "true",
+    market_trad_free_alpaca_key: "", market_trad_free_alpaca_secret: "", market_trad_free_alpaca_wss: "wss://stream.data.alpaca.markets/v2/iex",
 
-    market_forex_daily_dd: "5", market_forex_total_dd: "10", market_forex_max_notional: "5000", market_forex_balance: "10000",
-    market_forex_leverage: "30", market_forex_position_pct: "20", market_forex_risk_per_trade: "2", market_forex_hold_minutes: "480",
-    market_forex_mode: "paper", market_forex_enabled: "true",
-    market_forex_axi_account: "", market_forex_axi_password: "", market_forex_axi_server: "AxiTrader-Live",
-    market_forex_sl_bps: "15", market_forex_tp_bps: "45",
+    market_axi_daily_dd: "5", market_axi_total_dd: "10", market_axi_max_notional: "5000", market_axi_balance: "10000",
+    market_axi_leverage: "30", market_axi_position_pct: "20", market_axi_risk_per_trade: "2", market_axi_hold_minutes: "480",
+    market_axi_mode: "paper", market_axi_enabled: "true",
+    market_axi_axi_account: "", market_axi_axi_password: "", market_axi_axi_server: "AxiTrader-Live",
+    market_axi_sl_bps: "15", market_axi_tp_bps: "45",
 
     market_small_caps_daily_dd: "5", market_small_caps_total_dd: "10", market_small_caps_max_notional: "5000", market_small_caps_balance: "10000",
     market_small_caps_leverage: "1", market_small_caps_position_pct: "10", market_small_caps_risk_per_trade: "2", market_small_caps_hold_minutes: "30",
@@ -91,7 +91,7 @@ const ECO_CREDENTIALS: Record<string, ExchangeCreds> = {
             ]
         }
     ],
-    memecoins: [
+    meme: [
         {
             title: "MEXC (Spot CEX)",
             fields: [
@@ -101,7 +101,7 @@ const ECO_CREDENTIALS: Record<string, ExchangeCreds> = {
             ]
         }
     ],
-    equities: [
+    trad_free: [
         {
             title: "ALPACA (Tradicional FREE)",
             fields: [
@@ -111,7 +111,7 @@ const ECO_CREDENTIALS: Record<string, ExchangeCreds> = {
             ]
         }
     ],
-    forex: [
+    axi: [
         {
             title: "AXI SELECT (Prop Firm MT4/MT5)",
             fields: [
@@ -227,7 +227,7 @@ const AdminConsole: React.FC = () => {
             setConfigs(loadedConfig);
 
             // Load profiles for all ecosystems
-            for (const eco of ["crypto", "memecoins", "equities", "forex", "small_caps"]) {
+            for (const eco of ["crypto", "meme", "trad_free", "axi", "small_caps"]) {
                 loadProfiles(eco);
             }
         } catch (err) {
@@ -415,9 +415,9 @@ const AdminConsole: React.FC = () => {
     // ═══════════════════════════════════════════
     const MARKETS = [
         { id: "crypto", label: "Cripto", icon: "₿", color: "#a78bfa", desc: "Hyperliquid y aster.exchange" },
-        { id: "memecoins", label: "Memecoins", icon: "🐸", color: "#f472b6", desc: "MEXC" },
-        { id: "equities", label: "Tradicional FREE", icon: "📊", color: "#22c55e", desc: "Forex, commodities, acciones, índices (Alpaca)" },
-        { id: "forex", label: "Tradicional AXI Select", icon: "💱", color: "#f59e0b", desc: "Axi - Prop Firm con reglas estrictas" },
+        { id: "meme", label: "Memecoins", icon: "🐸", color: "#f472b6", desc: "MEXC" },
+        { id: "trad_free", label: "Tradicional FREE", icon: "📊", color: "#22c55e", desc: "Forex, commodities, acciones, índices (Alpaca)" },
+        { id: "axi", label: "Tradicional AXI Select", icon: "💱", color: "#f59e0b", desc: "Axi - Prop Firm con reglas estrictas" },
         { id: "small_caps", label: "Small Caps", icon: "🔬", color: "#06b6d4", desc: "Acciones americanas intradiarias (Alpaca)" },
     ];
 

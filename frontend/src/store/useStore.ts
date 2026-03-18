@@ -5,7 +5,7 @@ import { io, Socket } from "socket.io-client";
 // DESKS
 // ═══════════════════════════════════════════
 
-export type DeskId = "overview" | "crypto" | "memecoins" | "equities" | "forex" | "admin";
+export type DeskId = "overview" | "crypto" | "meme" | "trad_free" | "axi" | "small_caps" | "admin";
 
 export interface DeskConfig {
     id: DeskId;
@@ -19,9 +19,10 @@ export interface DeskConfig {
 export const DESKS: DeskConfig[] = [
     { id: "overview", label: "GLOBAL", exchange: "ALL", symbols: ["BTC", "ETH", "SOL", "DOGE", "AAPL", "NVDA", "EURUSD"], color: "#4a6cf7", icon: "🌐" },
     { id: "crypto", label: "CRIPTO", exchange: "HYPERLIQUID", symbols: ["BTC", "ETH", "SOL", "LINK", "ARB", "AVAX", "WIF", "ONDO", "SUI"], color: "#a78bfa", icon: "₿" },
-    { id: "memecoins", label: "MEME", exchange: "MEXC", symbols: ["PEPEUSDT", "DOGEUSDT", "SHIBUSDT", "WIFUSDT", "BONKUSDT", "FLOKIUSDT", "BOMEUSDT", "POPCATUSDT"], color: "#f472b6", icon: "🐸" },
-    { id: "equities", label: "TRADICIONAL FREE", exchange: "ALPACA", symbols: ["AAPL", "TSLA", "SPY", "NVDA", "MSFT", "GOOGL", "AMZN", "META"], color: "#22c55e", icon: "📊" },
-    { id: "forex", label: "AXI SELECT", exchange: "AXI", symbols: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "GBPJPY", "AUDUSD", "USDCHF"], color: "#f59e0b", icon: "💱" },
+    { id: "meme", label: "MEME", exchange: "MEXC", symbols: ["PEPEUSDT", "DOGEUSDT", "SHIBUSDT", "WIFUSDT", "BONKUSDT", "FLOKIUSDT", "BOMEUSDT", "POPCATUSDT"], color: "#f472b6", icon: "🐸" },
+    { id: "trad_free", label: "TRADICIONAL FREE", exchange: "ALPACA", symbols: ["AAPL", "TSLA", "SPY", "NVDA", "MSFT", "GOOGL", "AMZN", "META"], color: "#22c55e", icon: "📊" },
+    { id: "axi", label: "AXI SELECT", exchange: "AXI", symbols: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "GBPJPY", "AUDUSD", "USDCHF"], color: "#f59e0b", icon: "💱" },
+    { id: "small_caps", label: "SMALL CAPS", exchange: "ALPACA", symbols: ["GME", "AMC", "KOSS", "BBBY"], color: "#06b6d4", icon: "🔬" },
     { id: "admin", label: "ADMINISTRACIÓN", exchange: "", symbols: [], color: "#ef4444", icon: "⚙️" },
 ];
 
@@ -179,9 +180,10 @@ export const useStore = create<AppStore>((set, get) => ({
     killSwitchActive: false,
     selectedSymbols: {
         crypto: "BTC",
-        memecoins: "PEPEUSDT",
-        equities: "AAPL",
-        forex: "EURUSD"
+        meme: "PEPEUSDT",
+        trad_free: "AAPL",
+        axi: "EURUSD",
+        small_caps: "GME"
     },
 
     setPixelAssets: (assets) => set({ pixelAssets: assets }),
