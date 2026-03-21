@@ -9,6 +9,5 @@ export class EcosystemL4A extends L4AExecutionEngine {
     constructor(engine: PaperExecutionEngine) {
         super(engine);
         // This ecosystem specifically targets: crypto
-        console.log("[2_crypto_majors] L4A Execution Engine initialized.");
     }
 }

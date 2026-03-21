@@ -151,8 +151,8 @@ async function testRiskManagerFilters() {
     // Test Daily DD rejection
     console.log("\nTesting Daily DD rejection (simulated 4.8% DD)...");
     // Manually set high DD by simulating a loss
-    (engine as any).account.dayStartEquity = 10000;
-    (engine as any).account.balance = 9520; // 4.8% loss
+    (engine as any).accounts["crypto"].dayStartEquity = 10000;
+    (engine as any).accounts["crypto"].balance = 9520; // 4.8% loss
 
     const overDDSignal = { ...validSignal, notional_usd: 500 };
 
@@ -169,7 +169,7 @@ async function testRiskManagerFilters() {
 
     // Test R:R rejection
     console.log("\nTesting R:R rejection (bad ratio)...");
-    (engine as any).account.balance = 10000; // reset
+    (engine as any).accounts["crypto"].balance = 10000; // reset
     const badRRSignal = {
         ...validSignal,
         stop_loss_pct: 3.0,

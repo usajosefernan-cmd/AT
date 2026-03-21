@@ -46,17 +46,17 @@ export class L5QuantitativeResearcher {
 
     /**
      * Ejecutar análisis forense completo para un ecosistema.
-     * Diseñado para ser llamado por un cron job (ej. sábados 00:00 UTC).
+     * Diseñado para ser llamado por un cron job o a demanda.
      */
-    static async runForensicAnalysis(ecosystem: string): Promise<ForensicReport> {
-        console.log(`\n[L5][${ecosystem}] 🔬 Starting Forensic Analysis...`);
+    static async runForensicAnalysis(userId: string, ecosystem: string): Promise<ForensicReport> {
+        console.log(`\n[L5][${ecosystem}] 🔬 Starting Forensic Analysis for user ${userId.slice(0,6)}...`);
 
         // 1. Extraer Teoría (Serie D)
         const policyD = MarkdownParser.getPolicyDContext(ecosystem);
         console.log(`[L5][${ecosystem}] 📚 Marco Teórico POLICY_D.md inyectado (${policyD.length} bytes). Evaluando empirismo vs teoría...`);
 
         // 2. Obtener últimas 50 autopsias
-        const autopsies = await PostTradeLogger.getRecentAutopsies(ecosystem, 50);
+        const autopsies = await PostTradeLogger.getRecentAutopsies(userId, ecosystem, 50);
 
         if (autopsies.length < 5) {
             console.log(`[L5][${ecosystem}] ⚠️ Insufficient data (${autopsies.length} trades). Minimum 5 required.`);
@@ -81,6 +81,7 @@ export class L5QuantitativeResearcher {
         // 4. Inyectar parches en Vector Memory
         for (const patch of patches) {
             await VectorMemoryManager.storeTradeResult(
+                userId,
                 `L5_PATCH_${patch.id}`,
                 ecosystem,
                 `[L5 POLICY PATCH] ${patch.directive}`,
@@ -121,17 +122,17 @@ export class L5QuantitativeResearcher {
     }
 
     /**
-     * Ejecutar análisis forense para TODOS los ecosistemas.
-     * Ideal para el cron job del fin de semana.
+     * Ejecutar análisis forense para TODOS los ecosistemas de un usuario.
+     * Ideal para el cron job del fin de semana para cada cuenta.
      */
-    static async runFullWeekendAnalysis(): Promise<ForensicReport[]> {
+    static async runFullWeekendAnalysis(userId: string): Promise<ForensicReport[]> {
         console.log(`\n${'═'.repeat(60)}`);
-        console.log(`[L5] 🔬 WEEKEND FORENSIC ANALYSIS — ${new Date().toISOString()}`);
+        console.log(`[L5] 🔬 WEEKEND FORENSIC ANALYSIS User ${userId.slice(0,6)} — ${new Date().toISOString()}`);
         console.log(`${'═'.repeat(60)}`);
 
         const reports: ForensicReport[] = [];
         for (const ecosystem of MARKET_IDS) {
-            const report = await this.runForensicAnalysis(ecosystem);
+            const report = await this.runForensicAnalysis(userId, ecosystem);
             reports.push(report);
         }
 

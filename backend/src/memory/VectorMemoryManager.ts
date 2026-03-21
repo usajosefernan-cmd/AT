@@ -21,13 +21,14 @@ export class VectorMemoryManager {
         return Array(1536).fill(0).map(() => Math.random() * 0.1); 
     }
 
-    static async storeTradeResult(tradeId: string, ecosystem: string, rationale: string, profit_loss: number, context: any = {}) {
+    static async storeTradeResult(userId: string, tradeId: string, ecosystem: string, rationale: string, profit_loss: number, context: any = {}) {
         try {
             // Convertimos el contexto y rationale a texto para generar el vector
             const textToEmbed = `${ecosystem} | PnL: ${profit_loss} | Rationale: ${rationale} | Context: ${JSON.stringify(context)}`;
             const embedding = await this.generateEmbedding(textToEmbed);
 
             const { error } = await supabase.from('trade_memory').insert({
+                user_id: userId,
                 trade_id: tradeId,
                 ecosystem: ecosystem,
                 rationale: rationale,
@@ -41,13 +42,13 @@ export class VectorMemoryManager {
                 console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Memory Error] No se pudo guardar en Supabase:\x1b[0m`, error);
                 return;
             }
-            console.log(`\n\x1b[32m[\uD83E\uDDE0 Vector Memory] -> Trade ${tradeId} guardado con Supabase pgvector. PnL: ${profit_loss}\x1b[0m`);
+            console.log(`\n\x1b[32m[\uD83E\uDDE0 Vector Memory] -> Trade ${tradeId} guardado con Supabase pgvector para User ${userId.slice(0,6)}... PnL: ${profit_loss}\x1b[0m`);
         } catch (err) {
             console.error(`\x1b[31m[\uD83D\uDDB4\uFE0F Vector Memory Exception]\x1b[0m`, err);
         }
     }
 
-    static async queryPastMistakes(ecosystem: string, current_context: any): Promise<TradeMemory[]> {
+    static async queryPastMistakes(userId: string, ecosystem: string, current_context: any): Promise<TradeMemory[]> {
         console.log(`\n\x1b[33m[\uD83D\uDD0D Vector Memory] -> Consultando pgvector en Supabase histórico de errores en ${ecosystem} para contexto similar...\x1b[0m`);
         
         try {
@@ -59,7 +60,8 @@ export class VectorMemoryManager {
                 query_embedding: queryEmbedding,
                 match_threshold: 0.85, 
                 match_count: 5,
-                ecosystem_filter: ecosystem
+                ecosystem_filter: ecosystem,
+                p_user_id: userId
             });
 
             if (error) {
@@ -95,13 +97,14 @@ export class VectorMemoryManager {
      * Devuelve directivas textuales que L3 inyecta en su prompt.
      * L5 almacena parches con trade_id = 'L5_PATCH_...' y context.type = 'policy_patch'.
      */
-    static async queryPolicyPatches(ecosystem: string): Promise<{ directive: string; severity: string; patch_type: string }[]> {
+    static async queryPolicyPatches(userId: string, ecosystem: string): Promise<{ directive: string; severity: string; patch_type: string }[]> {
         try {
             const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
 
             const { data, error } = await supabase
                 .from('trade_memory')
                 .select('context, rationale')
+                .eq('user_id', userId)
                 .eq('ecosystem', ecosystem)
                 .like('trade_id', 'L5_PATCH_%')
                 .gte('timestamp', thirtyDaysAgo)

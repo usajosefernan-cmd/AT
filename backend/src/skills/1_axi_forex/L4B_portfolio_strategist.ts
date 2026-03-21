@@ -9,6 +9,5 @@ export class EcosystemL4B extends L4BPortfolioStrategist {
     constructor(engine: PaperExecutionEngine) {
         // We reuse the central L4B logic but can inject ecosystem specific prompts here
         super(engine);
-        console.log("[1_axi_forex] L4B Portfolio Strategist initialized.");
     }
 }

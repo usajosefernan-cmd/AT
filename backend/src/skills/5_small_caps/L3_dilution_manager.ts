@@ -73,7 +73,8 @@ async function internalDilutionEvaluation(alert: SmallCapAlert, catalystEval: Ca
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = await VectorMemoryManager.queryPastMistakes("5_small_caps", { setup: catalystEval.setup_classification });
+    const userId = process.env.DEFAULT_USER_ID || '00000000-0000-0000-0000-000000000000';
+    const mistakes = await VectorMemoryManager.queryPastMistakes(userId, "5_small_caps", { setup: catalystEval.setup_classification });
     let riskAmountUsd = 50; 
     let rationalePrefix = `APROBADO. El setup ${catalystEval.setup_classification} es óptimo y la velocidad de cinta soporta el Squeeze.`;
 
@@ -83,7 +84,7 @@ async function internalDilutionEvaluation(alert: SmallCapAlert, catalystEval: Ca
     }
 
     // --- PARCHES L5 (Quantitative Researcher) ---
-    const l5Patches = await VectorMemoryManager.queryPolicyPatches("5_small_caps");
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches(userId, "5_small_caps");
     for (const patch of l5Patches) {
         if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
             (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {

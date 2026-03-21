@@ -9,6 +9,5 @@ export class EcosystemL4A extends L4AExecutionEngine {
     constructor(engine: PaperExecutionEngine) {
         super(engine);
         // This ecosystem specifically targets: forex
-        console.log("[1_axi_forex] L4A Execution Engine initialized.");
     }
 }

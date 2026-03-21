@@ -75,7 +75,8 @@ async function internalPortfolioManagerEvaluation(alert: GapAlert, vwapEval: VWA
     }
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = await VectorMemoryManager.queryPastMistakes("4_equities_large", { classification: vwapEval.gap_classification });
+    const userId = process.env.DEFAULT_USER_ID || '00000000-0000-0000-0000-000000000000';
+    const mistakes = await VectorMemoryManager.queryPastMistakes(userId, "4_equities_large", { classification: vwapEval.gap_classification });
     let approvedSize = 0.5; // 0.5% del Portfolio
     let rationalePrefix = `APROBADO. Estructura "${vwapEval.gap_classification}" institucional validada (RVOL ${alert.data.rvol_open}x).`;
 
@@ -85,7 +86,7 @@ async function internalPortfolioManagerEvaluation(alert: GapAlert, vwapEval: VWA
     }
 
     // --- PARCHES L5 (Quantitative Researcher) ---
-    const l5Patches = await VectorMemoryManager.queryPolicyPatches("4_equities_large");
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches(userId, "4_equities_large");
     for (const patch of l5Patches) {
         if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
             (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {

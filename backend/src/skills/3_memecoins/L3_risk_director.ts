@@ -83,9 +83,10 @@ async function internalMemeRiskEvaluation(alert: MemeSpikeAlert, narrativeEval: 
         };
     }
 
+    const userId = process.env.DEFAULT_USER_ID || '00000000-0000-0000-0000-000000000000';
     // Memoria vectorial (errores pasados)
     try {
-        const mistakes = await VectorMemoryManager.queryPastMistakes("3_memecoins", { phase: narrativeEval.pump_phase });
+        const mistakes = await VectorMemoryManager.queryPastMistakes(userId, "3_memecoins", { phase: narrativeEval.pump_phase });
         if (mistakes.length >= 3) {
             return {
                 approved: false,
@@ -100,7 +101,7 @@ async function internalMemeRiskEvaluation(alert: MemeSpikeAlert, narrativeEval: 
 
     // --- PARCHES L5 (Quantitative Researcher) ---
     try {
-        const l5Patches = await VectorMemoryManager.queryPolicyPatches("3_memecoins");
+        const l5Patches = await VectorMemoryManager.queryPolicyPatches(userId, "3_memecoins");
         for (const patch of l5Patches) {
             if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
                 (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {

@@ -63,7 +63,8 @@ async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: Ta
     console.log(`\x1b[35m[Axi L3 Risk]\x1b[0m Evaluando propuesta táctica con identidad Markdown...`);
 
     // --- PROTECCIÓN EVOLUTIVA (Vector Memory) ---
-    const mistakes = await VectorMemoryManager.queryPastMistakes("1_axi_forex", { pattern: tacticalEval.geometry_patterns.join(',') });
+    const userId = process.env.DEFAULT_USER_ID || '00000000-0000-0000-0000-000000000000';
+    const mistakes = await VectorMemoryManager.queryPastMistakes(userId, "1_axi_forex", { pattern: tacticalEval.geometry_patterns.join(',') });
     if (mistakes.length >= 3) {
         console.warn(`\x1b[33m[Axi L3 Risk] VETO Automático:\x1b[0m 3 Fallos históricos consecutivos en '${tacticalEval.geometry_patterns.join(',')}'.`);
         return {
@@ -77,7 +78,7 @@ async function internalStrategicEvaluation(alert: AnomalyAlert, tacticalEval: Ta
     }
 
     // --- PARCHES L5 (Quantitative Researcher) ---
-    const l5Patches = await VectorMemoryManager.queryPolicyPatches("1_axi_forex");
+    const l5Patches = await VectorMemoryManager.queryPolicyPatches(userId, "1_axi_forex");
     const criticalPatches = l5Patches.filter(p => p.severity === 'CRITICAL' || p.severity === 'HIGH');
     // VETO automático si algún parche CRITICAL afecta a los setups actuales
     for (const patch of criticalPatches) {

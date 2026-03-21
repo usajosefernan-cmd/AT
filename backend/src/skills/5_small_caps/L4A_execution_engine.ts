@@ -9,6 +9,5 @@ export class EcosystemL4A extends L4AExecutionEngine {
     constructor(engine: PaperExecutionEngine) {
         super(engine);
         // This ecosystem specifically targets: small_caps
-        console.log("[5_small_caps] L4A Execution Engine initialized.");
     }
 }

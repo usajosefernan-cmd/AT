@@ -70,7 +70,7 @@ export class CronOrchestrator {
             console.log(`[Cron] 🔬 Ejecutando Investigación Forense Semanal (L5)...`);
             broadcastAgentLog('system', 'L5 iniciando batch processing forense (Fin de semana)', 'info');
             try {
-                await L5QuantitativeResearcher.runFullWeekendAnalysis();
+                await L5QuantitativeResearcher.runFullWeekendAnalysis(this.engine.userId);
             } catch (err) {
                 console.error(`[Cron] Error en Análisis Forense L5:`, err);
             }

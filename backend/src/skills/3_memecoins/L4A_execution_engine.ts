@@ -9,6 +9,5 @@ export class EcosystemL4A extends L4AExecutionEngine {
     constructor(engine: PaperExecutionEngine) {
         super(engine);
         // This ecosystem specifically targets: memecoins
-        console.log("[3_memecoins] L4A Execution Engine initialized.");
     }
 }

@@ -101,11 +101,12 @@ export class PostTradeLogger {
     /**
      * Consulta autopsias recientes por ecosistema (para L5).
      */
-    static async getRecentAutopsies(ecosystem: string, limit: number = 50): Promise<TradeAutopsy[]> {
+    static async getRecentAutopsies(userId: string, ecosystem: string, limit: number = 50): Promise<TradeAutopsy[]> {
         try {
             const { data, error } = await supabase
                 .from('trade_autopsies')
                 .select('*')
+                .eq('user_id', userId)
                 .eq('ecosystem', ecosystem)
                 .order('closed_at', { ascending: false })
                 .limit(limit);

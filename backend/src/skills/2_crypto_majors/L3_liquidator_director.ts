@@ -63,9 +63,10 @@ async function internalRiskEvaluation(obEval: any, flowData: any): Promise<Crypt
         };
     }
 
+    const userId = process.env.DEFAULT_USER_ID || '00000000-0000-0000-0000-000000000000';
     // Consultar memoria vectorial por errores pasados
     try {
-        const mistakes = await VectorMemoryManager.queryPastMistakes("2_crypto_majors", { cvd_extreme: true });
+        const mistakes = await VectorMemoryManager.queryPastMistakes(userId, "2_crypto_majors", { cvd_extreme: true });
         if (mistakes.length >= 3) {
             return {
                 approved: false,
@@ -80,7 +81,7 @@ async function internalRiskEvaluation(obEval: any, flowData: any): Promise<Crypt
 
     // --- PARCHES L5 (Quantitative Researcher) ---
     try {
-        const l5Patches = await VectorMemoryManager.queryPolicyPatches("2_crypto_majors");
+        const l5Patches = await VectorMemoryManager.queryPolicyPatches(userId, "2_crypto_majors");
         for (const patch of l5Patches) {
             if ((patch.severity === 'CRITICAL' || patch.severity === 'HIGH') &&
                 (patch.patch_type === 'VETO_CONDITION' || patch.patch_type === 'ALPHA_DECAY_WARNING')) {
