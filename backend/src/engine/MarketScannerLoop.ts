@@ -365,7 +365,7 @@ export class MarketScannerLoop {
             asset, volumeSpike, momentum, signal,
             approved: evaluation?.approved,
             timestamp: new Date().toISOString(),
-        })).catch(() => { }); // Don't crash on RLS errors
+        }), this.paperEngine.userId).catch(() => { }); // Don't crash on RLS errors
     }
 
     public getStats() {

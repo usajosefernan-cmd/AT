@@ -20,10 +20,10 @@ interface MarketRoom {
 
 const ROOMS: MarketRoom[] = [
     { id: "crypto", label: "CRIPTO", icon: "₿", color: "#a78bfa", exchange: "HYPERLIQUID/ASTER", marketKey: "crypto", l1: "Sentinel Flow", l2: "Orderbook Analyst", l3: "L3 CRIPTO" },
-    { id: "memecoins", label: "MEME", icon: "🐸", color: "#f472b6", exchange: "MEXC", marketKey: "memecoins", l1: "Momentum Screener", l2: "Narrative Analyst", l3: "L3 MEME" },
-    { id: "equities", label: "TRADICIONAL FREE", icon: "📊", color: "#22c55e", exchange: "ALPACA", marketKey: "equities", l1: "Volume Scanner", l2: "Catalyst Analyst", l3: "L3 TRAD FREE" },
-    { id: "forex", label: "AXI SELECT", icon: "💱", color: "#f59e0b", exchange: "AXI P.FIRM", marketKey: "forex", l1: "Macro Screener", l2: "Geometry Analyst", l3: "L3 AXI SELECT" },
-    { id: "smallcaps", label: "SMALL CAPS", icon: "🔬", color: "#06b6d4", exchange: "ALPACA", marketKey: "small_caps", l1: "Halt Screener", l2: "Catalyst Analyst", l3: "L3 SMALL CAPS" },
+    { id: "meme", label: "MEME", icon: "🐸", color: "#f472b6", exchange: "MEXC", marketKey: "meme", l1: "Momentum Screener", l2: "Narrative Analyst", l3: "L3 MEME" },
+    { id: "trad_free", label: "TRADICIONAL FREE", icon: "📊", color: "#22c55e", exchange: "ALPACA", marketKey: "trad_free", l1: "Volume Scanner", l2: "Catalyst Analyst", l3: "L3 TRAD FREE" },
+    { id: "axi", label: "AXI SELECT", icon: "💱", color: "#f59e0b", exchange: "AXI P.FIRM", marketKey: "axi", l1: "Macro Screener", l2: "Geometry Analyst", l3: "L3 AXI SELECT" },
+    { id: "small_caps", label: "SMALL CAPS", icon: "🔬", color: "#06b6d4", exchange: "ALPACA", marketKey: "small_caps", l1: "Halt Screener", l2: "Catalyst Analyst", l3: "L3 SMALL CAPS" },
 ];
 
 const statusColors: Record<string, string> = {
@@ -158,10 +158,10 @@ const AgentRooms: React.FC = memo(() => {
         if (text.includes(room.exchange.toLowerCase())) return true;
         if (text.includes(room.id)) return true;
         if (room.id === "crypto" && (text.includes("btc") || text.includes("eth") || text.includes("sol") || text.includes("crypto") || text.includes("perp") || aid.includes("l2_crypto") || aid.includes("l3_crypto"))) return true;
-        if (room.id === "memecoins" && (text.includes("meme") || text.includes("pepe") || text.includes("doge") || text.includes("bonk") || aid.includes("l2_meme") || aid.includes("l3_meme"))) return true;
-        if (room.id === "equities" && (text.includes("aapl") || text.includes("tsla") || text.includes("spy") || text.includes("equit") || aid.includes("l2_equit"))) return true;
-        if (room.id === "forex" && (text.includes("eurusd") || text.includes("xauusd") || text.includes("forex") || text.includes("macro") || aid.includes("l2_forex"))) return true;
-        if (room.id === "smallcaps" && (text.includes("small") || text.includes("halt") || text.includes("dilut") || aid.includes("l2_small"))) return true;
+        if (room.id === "meme" && (text.includes("meme") || text.includes("pepe") || text.includes("doge") || text.includes("bonk") || aid.includes("l2_meme") || aid.includes("l3_meme"))) return true;
+        if (room.id === "trad_free" && (text.includes("aapl") || text.includes("tsla") || text.includes("spy") || text.includes("equit") || text.includes("trad_free") || aid.includes("l2_equit") || aid.includes("l3_equit") || aid.includes("l3_trad_free"))) return true;
+        if (room.id === "axi" && (text.includes("eurusd") || text.includes("xauusd") || text.includes("forex") || text.includes("axi") || text.includes("macro") || aid.includes("l2_forex") || aid.includes("l3_axi"))) return true;
+        if (room.id === "small_caps" && (text.includes("small") || text.includes("halt") || text.includes("dilut") || aid.includes("l2_small") || aid.includes("l3_small"))) return true;
         return false;
     }).slice(-50), [allLogs, room]);
 

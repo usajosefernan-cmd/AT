@@ -50,7 +50,7 @@ export class AILoop {
         this.telegram = telegram;
         this.latestPrices = latestPrices;
 
-        this.sentinel = new SentinelAgent();
+        this.sentinel = new SentinelAgent(paperEngine.userId);
         this.riskManager = new RiskManagerAgent(paperEngine, latestPrices);
         this.ceoAgent = new CEOAgent(
             paperEngine,
@@ -186,7 +186,7 @@ export class AILoop {
             evaluation,
             stats: this.stats,
             timestamp: new Date().toISOString(),
-        }));
+        }), this.paperEngine.userId);
 
         broadcastAgentState("ceo", "idle", undefined, "idle");
         broadcastAgentState("sentinel", "idle", undefined, "idle");

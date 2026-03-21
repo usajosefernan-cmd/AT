@@ -113,8 +113,8 @@ async function testRiskManagerFilters() {
     const { RiskManagerAgent } = await import("../src/agents/RiskManagerAgent");
     const { PaperExecutionEngine } = await import("../src/engine/PaperExecutionEngine");
 
-    // Create a mock engine with $10,000 balance
-    const engine = new PaperExecutionEngine(10000);
+    const engine = new PaperExecutionEngine("b68057e9-7c48-4eac-9a67-0c7f3eabc767");
+    await engine.ready; // wait for supabase init
     const latestPrices: Record<string, number> = { BTC: 84000, ETH: 3000 };
     const riskManager = new RiskManagerAgent(engine, latestPrices);
 

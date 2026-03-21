@@ -292,23 +292,28 @@ export function updateRule(key: string, value: any) {
     const marketMatch = key.match(/^market_(\w+)_(\w+)$/);
     if (marketMatch) {
         const [, market, field] = marketMatch;
-        if (MARKET_RULES[market]) {
-            if (field === 'leverage') MARKET_RULES[market].maxLeverage = Math.max(1, Math.floor(numVal));
-            if (field === 'position_pct') MARKET_RULES[market].maxPositionPct = numVal;
-            if (field === 'risk_per_trade') MARKET_RULES[market].maxRiskPerTradePct = numVal;
-            if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
-            if (field === 'balance') (MARKET_RULES[market] as any).initialBalance = numVal;
-            // ── New ecosystem-level fields ──
-            if (field === 'mode') MARKET_RULES[market].mode = value === 'live' ? 'live' : 'paper';
-            else if (field === 'enabled') MARKET_RULES[market].enabled = value === true || value === 'true' || value === '1';
-            else if (!['leverage', 'position_pct', 'risk_per_trade', 'hold_minutes', 'balance'].includes(field)) {
-                // If it's none of the standard numerical fields or core flags, it's a dynamic credential
-                if (!MARKET_RULES[market].credentials) MARKET_RULES[market].credentials = {};
-                MARKET_RULES[market].credentials[field] = String(value);
-            }
-            console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
+        if (!MARKET_RULES[market]) {
+            // Unknown market key — skip silently to avoid crashes
             return;
         }
+        if (field === 'leverage') MARKET_RULES[market].maxLeverage = Math.max(1, Math.floor(numVal));
+        else if (field === 'position_pct') MARKET_RULES[market].maxPositionPct = numVal;
+        else if (field === 'risk_per_trade') MARKET_RULES[market].maxRiskPerTradePct = numVal;
+        else if (field === 'hold_minutes') MARKET_RULES[market].maxHoldMinutes = numVal > 0 ? numVal : null;
+        else if (field === 'balance') (MARKET_RULES[market] as any).initialBalance = numVal;
+        else if (field === 'mode') MARKET_RULES[market].mode = value === 'live' ? 'live' : 'paper';
+        else if (field === 'enabled') MARKET_RULES[market].enabled = value === true || value === 'true' || value === '1';
+        else if (field === 'daily_dd' || field === 'total_dd' || field === 'max_notional' || field === 'sl_bps' || field === 'tp_bps') {
+            // Store UI-only risk fields in credentials for round-trip persistence
+            if (!MARKET_RULES[market].credentials) MARKET_RULES[market].credentials = {};
+            MARKET_RULES[market].credentials[field] = String(value);
+        } else {
+            // Dynamic credential (API keys, WSS URLs, etc.)
+            if (!MARKET_RULES[market].credentials) MARKET_RULES[market].credentials = {};
+            MARKET_RULES[market].credentials[field] = String(value);
+        }
+        console.log(`[ExchangeManager] Market rule updated: ${market}.${field} = ${value}`);
+        return;
     }
 
     // ── Keys globales ──
@@ -323,7 +328,7 @@ export function updateRule(key: string, value: any) {
     
     // Leverage por mercado desde campos legacy de la consola
     if (key === "risk_max_leverage_crypto") MARKET_RULES.crypto.maxLeverage = Math.max(1, Math.floor(numVal));
-    if (key === "risk_max_leverage_forex") MARKET_RULES.forex.maxLeverage = Math.max(1, Math.floor(numVal));
+    if (key === "risk_max_leverage_forex" && MARKET_RULES.axi) MARKET_RULES.axi.maxLeverage = Math.max(1, Math.floor(numVal));
 
     if (key === "risk_max_notional_per_trade") {
         HYPERLIQUID_CONFIG.maxNotionalPerTrade = numVal;

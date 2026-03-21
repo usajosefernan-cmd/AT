@@ -171,12 +171,12 @@ export const useStore = create<AppStore>((set, get) => ({
             timestamp: Date.now() 
         }
     },
-    account: { balance: 10000, equity: 10000, dailyDrawdown: 0, maxDrawdown: 0, totalPnl: 0 },
+    account: { balance: 0, equity: 0, dailyDrawdown: 0, maxDrawdown: 0, totalPnl: 0 },
     activePositions: [],
     agentLogs: [],
     tape: [],
     orderBook: { bids: [], asks: [], symbol: "" },
-    equityCurve: [{ time: Date.now(), equity: 10000 }],
+    equityCurve: [],
     killSwitchActive: false,
     selectedSymbols: {
         crypto: "BTC",
@@ -250,8 +250,10 @@ export function initSocket(token?: string) {
         useStore.setState({ connected: true });
         useStore.getState().addAgentLog({ id: crypto.randomUUID(), agent_id: "system", text: `✅ Connected to Mission Control (${url})`, level: "success", timestamp: Date.now() });
 
-        // Fetch initial state
-        fetch(`${url}/api/positions`)
+        // Fetch initial state with auth token
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        fetch(`${url}/api/positions`, { headers })
             .then(res => res.json())
             .then(data => {
                 useStore.getState().updateAccount(data);

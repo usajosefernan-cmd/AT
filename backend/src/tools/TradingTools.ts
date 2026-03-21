@@ -340,7 +340,7 @@ export class ToolExecutor {
     }
 
     private async saveAnalysis(args: { key: string; content: string }): Promise<string> {
-        await saveAgentMemory("analyst", args.key, args.content);
+        await saveAgentMemory("analyst", args.key, args.content, this.paperEngine.userId);
         return JSON.stringify({ success: true, key: args.key, saved_at: new Date().toISOString() });
     }
 

@@ -195,9 +195,13 @@ function sourceToExchange(source: string): "hyperliquid" | "mexc" | "alpaca" {
 // ═══════════════════════════════════════════
 
 export class SentinelAgent {
-    // Buffer de las últimas N velas por símbolo para dar contexto al LLM
     private candleBuffer: Map<string, OHLCCandle[]> = new Map();
     private maxBufferSize = 20;
+    private userId: string;
+
+    constructor(userId: string = "default_user") {
+        this.userId = userId;
+    }
 
     /**
      * Almacena cada vela que llega del WSS para construir contexto.
@@ -345,7 +349,7 @@ Analiza la confluencia de indicadores y responde en JSON.`;
                 },
                 tokens: { prompt: usage.promptTokens, completion: usage.completionTokens },
                 analyzed_at: new Date().toISOString(),
-            }));
+            }), this.userId);
 
             return signal;
 

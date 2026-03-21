@@ -84,7 +84,8 @@ export class PostTradeLogger {
         };
 
         try {
-            const { error } = await supabase.from('trade_autopsies').insert(autopsy);
+            const userId = this.paperEngine.userId;
+            const { error } = await supabase.from('trade_autopsies').insert({ ...autopsy, user_id: userId });
             if (error) {
                 console.error(`[PostTradeLogger] ❌ Supabase insert error:`, error.message);
                 return;

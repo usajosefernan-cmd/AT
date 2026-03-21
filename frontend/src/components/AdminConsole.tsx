@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { getAuthHeaders } from '../utils/supabaseClient';
 import { Settings, Shield, RefreshCw, Database, Eye, EyeOff, Save, AlertTriangle, CheckCircle2, Trash2, FolderOpen, Plus } from "lucide-react";
+import { useStore } from "../store/useStore";
 
 // Use dynamic keys — supports global config + per-market rules
 type ConfigState = Record<string, string>;
@@ -143,6 +145,8 @@ const AdminConsole: React.FC = () => {
     const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
     const [activeMarket, setActiveMarket] = useState("crypto");
 
+    const activePositions = useStore(s => s.activePositions);
+
     // ── Profile state per ecosystem ──
     const [profiles, setProfiles] = useState<Record<string, EcoProfile[]>>({});
     const [activeProfile, setActiveProfile] = useState<Record<string, string>>({}); // ecosystem -> profile name
@@ -170,7 +174,8 @@ const AdminConsole: React.FC = () => {
     // ── Load profiles for an ecosystem ──
     const loadProfiles = useCallback(async (eco: string) => {
         try {
-            const res = await fetch(`${API()}/api/config/profiles/${eco}`);
+            const authHeaders = await getAuthHeaders();
+            const res = await fetch(`${API()}/api/config/profiles/${eco}`, { headers: authHeaders });
             const data = await res.json();
             if (data.success) {
                 setProfiles(prev => ({ ...prev, [eco]: data.profiles || [] }));
@@ -183,7 +188,8 @@ const AdminConsole: React.FC = () => {
         setLoading(true);
         setMessage(null);
         try {
-            const response = await fetch(`${API()}/api/config`);
+            const authHeaders = await getAuthHeaders();
+            const response = await fetch(`${API()}/api/config`, { headers: authHeaders });
             const data = await response.json();
             const loadedConfig = { ...defaultConfig };
             if (data.success && data.config) {
@@ -194,7 +200,7 @@ const AdminConsole: React.FC = () => {
 
             // Merge from backend in-memory MARKET_RULES for fields not yet in system_config
             try {
-                const riskRes = await fetch(`${API()}/api/config/risk`);
+                const riskRes = await fetch(`${API()}/api/config/risk`, { headers: authHeaders });
                 const riskData = await riskRes.json();
                 if (riskData.markets) {
                     for (const [marketId, rules] of Object.entries(riskData.markets)) {
@@ -246,6 +252,13 @@ const AdminConsole: React.FC = () => {
 
     // ── Save ecosystem to backend (hot-reload + persist) ──
     const saveEcosystem = async (eco: string) => {
+        // Validate open positions
+        const hasOpenPositions = activePositions.some(p => (p as any).marketId === eco);
+        if (hasOpenPositions) {
+            const confirmed = window.confirm(`⚠️ ¡ALERTA!\nTienes operaciones abiertas en el ecosistema ${eco.toUpperCase()}.\nCambiar la configuración podría afectar los cálculos de gestión de riesgo en curso o generar comportamientos inesperados en el PaperEngine.\n\n¿Estás seguro de que deseas aplicar y guardar estos cambios ahora?`);
+            if (!confirmed) return;
+        }
+
         setSaving(true);
         try {
             // Collect all market_{eco}_* keys
@@ -254,9 +267,10 @@ const AdminConsole: React.FC = () => {
                 if (k.startsWith(`market_${eco}_`)) ecoKeys[k] = v;
             }
             // Send to backend for hot-reload + Supabase persistence
+            const authHeaders = await getAuthHeaders();
             await fetch(`${API()}/api/config/risk`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...authHeaders },
                 body: JSON.stringify(ecoKeys),
             });
 
@@ -279,9 +293,10 @@ const AdminConsole: React.FC = () => {
     const saveProfileAs = async (eco: string, name: string) => {
         const data = getEcoData(eco);
         try {
+            const authHeaders = await getAuthHeaders();
             await fetch(`${API()}/api/config/profiles`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...authHeaders },
                 body: JSON.stringify({ ecosystem: eco, name, data }),
             });
             setActiveProfile(prev => ({ ...prev, [eco]: name }));
@@ -305,9 +320,10 @@ const AdminConsole: React.FC = () => {
     const deleteProfile = async (eco: string, name: string) => {
         if (!confirm(`¿Eliminar perfil "${name}" de ${eco}?`)) return;
         try {
+            const authHeaders = await getAuthHeaders();
             await fetch(`${API()}/api/config/profiles`, {
                 method: "DELETE",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...authHeaders },
                 body: JSON.stringify({ ecosystem: eco, name }),
             });
             if (activeProfile[eco] === name) {

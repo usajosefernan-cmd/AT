@@ -10,7 +10,7 @@ import { CronOrchestrator } from "./src/engine/CronOrchestrator";
 import { AILoop } from "./src/engine/AILoop";
 import { ProfileParser } from "./src/agents/ProfileParser";
 import { TelegramManager } from "./src/utils/TelegramManager";
-import { updatePaperBalance, savePaperPosition, supabase, saveMarketRules, loadMarketRules } from "./src/utils/supabaseClient";
+import { updatePaperBalance, savePaperPosition, supabase, saveMarketRules, loadMarketRules, seedUserAccounts } from "./src/utils/supabaseClient";
 import { MarketScannerLoop } from "./src/engine/MarketScannerLoop";
 import { loadPixelAssets } from "./src/PixelAssetsLoader";
 import { AXI_SELECT_RULES, MARKET_RULES, HYPERLIQUID_CONFIG, MEXC_CONFIG, ALPACA_CONFIG, updateRule } from "./src/config/ExchangeManager";
@@ -77,6 +77,9 @@ io.use(async (socket, next) => {
         console.warn("[Socket.io] Dev mode: token invalid but allowing connection", socket.id);
         return next();
     }
+    // Store user info on socket for later use
+    (socket as any).userId = user.id;
+    console.log(`[Socket.io] Authenticated user: ${user.email} (${user.id.slice(0, 8)})`);
 
     // Auth passed
     next();
@@ -93,131 +96,162 @@ const wsManager = new WebSocketManager();
 
 // ═══════════════════════════════════════════
 // 4. Paper Execution Engine & Institutional Clocks
+//    DEFERRED: Will initialize with userId from first auth
 // ═══════════════════════════════════════════
-const paperEngine = new PaperExecutionEngine();
 
-// Iniciar los Cron Jobs (L4-B, Telemetría L5) 
-const cronOrchestrator = new CronOrchestrator(paperEngine);
+// The active user id — set from socket auth or env var
+let activeUserId: string = process.env.DEFAULT_USER_ID || '';
+let paperEngine: PaperExecutionEngine | null = null;
+let cronOrchestrator: CronOrchestrator | null = null;
 
+/**
+ * Helper: extract userId from HTTP Authorization header.
+ * Falls back to activeUserId (set by socket connection).
+ */
+async function getUserIdFromReq(req: express.Request): Promise<string> {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (user && !error) return user.id;
+    }
+    return activeUserId;
+}
 
-// ═══════════════════════════════════════════
-// 5. Telegram Bot
-// ═══════════════════════════════════════════
-// 2. Instantiate Telegram (static init happens later)
-// const telegram = new TelegramManager(); // REMOVED - it's static now
+/**
+ * Initialize or reinitialize the PaperEngine for a given user.
+ */
+async function initEngineForUser(userId: string) {
+    if (paperEngine && activeUserId === userId) return; // Already initialized for this user
+    activeUserId = userId;
+    console.log(`[Server] 🚀 Initializing engine for user ${userId.slice(0, 8)}...`);
+
+    // Seed accounts if new user
+    await seedUserAccounts(userId);
+
+    paperEngine = new PaperExecutionEngine(userId);
+    await paperEngine.ready;
+
+    // Load market rules from Supabase for this user
+    const savedRules = await loadMarketRules(userId);
+    if (savedRules) {
+        for (const [key, val] of Object.entries(savedRules)) {
+            updateRule(`market_${key}`, val);
+        }
+    }
+
+    cronOrchestrator?.destroy();
+    cronOrchestrator = new CronOrchestrator(paperEngine);
+
+    console.log(`[Server] ✅ Engine ready for user ${userId.slice(0, 8)}`);
+}
 
 // Precio en vivo compartido entre todos los módulos
 const latestPrices: Record<string, number> = {};
 
 // ═══════════════════════════════════════════
-// 6. AI Loop — EL CEREBRO
-//    Conecta: WSS → Sentinel(Groq) → Risk(Claude) → Execute → Supabase
-// ═══════════════════════════════════════════
-// 3. Initiate AI Evaluation Loop
-const aiLoop = new AILoop(paperEngine, TelegramManager, latestPrices);
-
-// ═══════════════════════════════════════════
-// 6b. SWARM ORCHESTRATOR — Especialistas multi-mercado
+// 6. AI Loop, Swarm, Scanner — DEFERRED until engine is ready
 // ═══════════════════════════════════════════
 import { SwarmOrchestrator } from "./src/engine/SwarmOrchestrator";
-const swarmOrchestrator = new SwarmOrchestrator(aiLoop.riskManager);
-
-// Instanciar el Scanner Proactivo (Nueva generación)
-const marketScanner = new MarketScannerLoop(
-    aiLoop.sentinel,
-    aiLoop.riskManager,
-    paperEngine,
-    TelegramManager, // Changed from telegram to TelegramManager
-    latestPrices
-);
-
 import { SwarmAutonomyLoop } from "./src/engine/SwarmAutonomyLoop";
+import { getRadarAssets } from "./src/tools/MarketRadar";
+import { recordTick } from "./src/tools/ExplorationTools";
 
-// Re-wire CEOAgent to use SwarmOrchestrator for force_analysis
-(aiLoop.ceoAgent as any).toolExecutor.onForceAnalysis = () => swarmOrchestrator.runScanCycle();
+let aiLoop: AILoop | null = null;
+let marketScanner: MarketScannerLoop | null = null;
+let swarmOrchestrator: SwarmOrchestrator | null = null;
+let engineSystemsWired = false;
+
+/**
+ * Wire up all engine-dependent systems (AILoop, Swarm, Scanner, event listeners).
+ * Called once after initEngineForUser.
+ */
+function wireEngineSystems() {
+    if (engineSystemsWired || !paperEngine) return;
+    engineSystemsWired = true;
+
+    aiLoop = new AILoop(paperEngine, TelegramManager, latestPrices);
+    swarmOrchestrator = new SwarmOrchestrator(aiLoop.riskManager);
+    marketScanner = new MarketScannerLoop(
+        aiLoop.sentinel,
+        aiLoop.riskManager,
+        paperEngine,
+        TelegramManager,
+        latestPrices
+    );
+
+    // Re-wire CEOAgent 
+    (aiLoop.ceoAgent as any).toolExecutor.onForceAnalysis = () => swarmOrchestrator!.runScanCycle();
+
+    // Connect AILoop to WSS
+    aiLoop.wire(wsManager);
+
+    // Paper Engine Events → Frontend + Telegram
+    paperEngine.on("pnl_update", (data) => io.emit("paper_pnl", data));
+
+    paperEngine.on("position_opened", async (pos) => {
+        io.emit("paper_position_opened", pos);
+        const sideEmoji = pos.side === 'LONG' ? '🟢' : '🔴';
+        TelegramManager.broadcastAlert(
+            `${sideEmoji} *TRADE ABIERTO*\n` +
+            `${pos.symbol} ${pos.side}\n` +
+            `Precio: $${pos.entryPrice?.toFixed(2) || '?'}\n` +
+            `Tamaño: $${pos.notional?.toFixed(0) || '?'}\n` +
+            `Leverage: ${pos.leverage || 1}x\n` +
+            `Agente: ${pos.agent || 'Scanner'}\n` +
+            (pos.rationale ? `Razón: ${pos.rationale.slice(0, 120)}` : '')
+        );
+    });
+
+    paperEngine.on("position_closed", async (pos) => {
+        io.emit("paper_position_closed", pos);
+        const emoji = pos.realizedPnl >= 0 ? "🟢" : "🔴";
+        TelegramManager.broadcastAlert(
+            `${emoji} * Posición Cerrada *\n${pos.symbol} ${pos.side} \nPnL: $${pos.realizedPnl.toFixed(2)} \nRazón: ${pos.status} `
+        );
+    });
+
+    paperEngine.on("account_update", (snapshot) => {
+        io.emit("paper_account", snapshot);
+    });
+
+    paperEngine.on("drawdown_alert", (alert) => {
+        io.emit("paper_drawdown_alert", alert);
+        broadcastAgentState("risk", "drawdown_warning", `${alert.type}: ${alert.current.toFixed(2)}% `, "error");
+    });
+
+    console.log(`[Server] ✅ All engine systems wired.`);
+}
 
 function startSwarm() {
-    // Iniciar el enjambre de especialistas guiado por datos (Event-Driven)
-    // Inyectar el PaperEngine para que el SwarmLoop pueda ejecutar trades aprobados
+    if (!paperEngine || !marketScanner) return;
     SwarmAutonomyLoop.setPaperEngine(paperEngine);
     SwarmAutonomyLoop.start();
-
-    // Iniciar el Scanner Proactivo (cada 5s internamente)
     marketScanner.start();
-
-    // Iniciar listeners de WebSockets externos + Telegram
     TelegramManager.init(process.env.TELEGRAM_BOT_TOKEN || "");
 }
 function stopSwarm() {
     SwarmAutonomyLoop.stop();
-    marketScanner.stop();
+    if (marketScanner) marketScanner.stop();
 }
 
-import { getRadarAssets } from "./src/tools/MarketRadar";
-
 // ═══════════════════════════════════════════
-// 7. Real Market Data → Frontend + PaperEngine + AILoop + Hunter
+// 7. Real Market Data → Frontend + PaperEngine
 // ═══════════════════════════════════════════
-
-import { recordTick } from "./src/tools/ExplorationTools";
 
 wsManager.on("tick", (tick: MarketTick) => {
     latestPrices[tick.symbol] = tick.price;
     io.emit("market_tick", tick);
-    paperEngine.onRealTick(tick);
-
-    // Feed the radar for velocity calculation
+    if (paperEngine) paperEngine.onRealTick(tick);
     recordTick(tick.symbol, tick.price, tick.volume || 0);
-    
-    // Feed the proactive scanner
-    marketScanner.onTick(tick.symbol, tick.price, tick.volume || 0);
+    if (marketScanner) marketScanner.onTick(tick.symbol, tick.price, tick.volume || 0);
 });
 
 wsManager.on("kline", (candle: OHLCCandle) => {
     io.emit("market_kline", candle);
 });
 
-// Conectar AILoop: Sentinel candles + Telegram CEO handler
-aiLoop.wire(wsManager);
-
-
-// ═══════════════════════════════════════════
-// 8. Paper Engine Events → Frontend + Supabase + Telegram
-// ═══════════════════════════════════════════
-paperEngine.on("pnl_update", (data) => io.emit("paper_pnl", data));
-
-paperEngine.on("position_opened", async (pos) => {
-    io.emit("paper_position_opened", pos);
-    // Notificar al usuario por Telegram cuando se abre un trade
-    const sideEmoji = pos.side === 'LONG' ? '🟢' : '🔴';
-    TelegramManager.broadcastAlert(
-        `${sideEmoji} *TRADE ABIERTO*\n` +
-        `${pos.symbol} ${pos.side}\n` +
-        `Precio: $${pos.entryPrice?.toFixed(2) || '?'}\n` +
-        `Tamaño: $${pos.notional?.toFixed(0) || '?'}\n` +
-        `Leverage: ${pos.leverage || 1}x\n` +
-        `Agente: ${pos.agent || 'Scanner'}\n` +
-        (pos.rationale ? `Razón: ${pos.rationale.slice(0, 120)}` : '')
-    );
-});
-
-paperEngine.on("position_closed", async (pos) => {
-    io.emit("paper_position_closed", pos);
-    const emoji = pos.realizedPnl >= 0 ? "🟢" : "🔴";
-    TelegramManager.broadcastAlert(
-        `${emoji} * Posición Cerrada *\n${pos.symbol} ${pos.side} \nPnL: $${pos.realizedPnl.toFixed(2)} \nRazón: ${pos.status} `
-    );
-});
-
-paperEngine.on("account_update", (snapshot) => {
-    io.emit("paper_account", snapshot);
-});
-
-paperEngine.on("drawdown_alert", (alert) => {
-    io.emit("paper_drawdown_alert", alert);
-    broadcastAgentState("risk", "drawdown_warning", `${alert.type}: ${alert.current.toFixed(2)}% `, "error");
-    // NO enviar a Telegram — solo dashboard. El usuario pidió no recibir DD spam.
-});
+// drawdown_alert is wired inside wireEngineSystems()
 
 // ═══════════════════════════════════════════
 // 9. API Endpoints
@@ -226,6 +260,7 @@ paperEngine.on("drawdown_alert", (alert) => {
 // CEO command from Dashboard Chat — now goes through the real CEOAgent with LLM
 app.post("/api/command", async (req, res) => {
     try {
+        if (!aiLoop) return res.status(503).json({ error: "Engine not ready" });
         const { command } = req.body;
         const response = await aiLoop.ceoAgent.processMessage(command);
         res.json({ success: true, response });
@@ -234,9 +269,10 @@ app.post("/api/command", async (req, res) => {
     }
 });
 
-// CEO chat from AgentRooms — includes market context
+// CEO chat from AgentRooms
 app.post("/api/ceo/chat", async (req, res) => {
     try {
+        if (!aiLoop) return res.status(503).json({ error: "Engine not ready" });
         const { message, market } = req.body;
         const rules = MARKET_RULES[market] || {};
         const enrichedMsg = `${message}\n\n[CONTEXTO DEL MERCADO: ${market}]\nReglas: Leverage=${(rules as any).maxLeverage || 1}x, Position=${(rules as any).maxPositionPct || 20}%, Risk/Trade=${(rules as any).maxRiskPerTradePct || 3}%, Estilo=${(rules as any).style || 'swing'}, MaxHold=${(rules as any).maxHoldMinutes || '∞'}min`;
@@ -255,6 +291,7 @@ app.get("/api/config/market-rules", (_req, res) => {
 // CEO message from Telegram — also goes through the real CEOAgent
 app.post("/api/telegram-webhook", async (req, res) => {
     try {
+        if (!aiLoop) return res.status(503).json({ error: "Engine not ready" });
         const { message } = req.body;
         const response = await aiLoop.handleTelegramMessage(message);
         res.json({ success: true, response });
@@ -265,6 +302,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 
 // Kill Switch
 app.post("/api/killswitch", (_req, res) => {
+    if (!paperEngine) return res.status(503).json({ error: "Engine not ready" });
     paperEngine.liquidateAll(latestPrices);
     broadcastAgentState("ceo", "killswitch_activated", "ALL HALTED", "error");
     TelegramManager.broadcastAlert("🛑 *KILL SWITCH* desde Dashboard.");
@@ -274,6 +312,7 @@ app.post("/api/killswitch", (_req, res) => {
 // ═══ FORCE ANALYSIS — Bypass candle timer, run pipeline NOW ═══
 app.post("/api/force-analysis", async (_req, res) => {
     try {
+        if (!swarmOrchestrator) return res.status(503).json({ error: "Engine not ready" });
         console.log(`\n🔴 [FORCE ANALYSIS] Manual trigger from Dashboard`);
         await swarmOrchestrator.runScanCycle();
         res.json({ success: true, result: { message: "Swarm scan triggered manually" } });
@@ -284,11 +323,14 @@ app.post("/api/force-analysis", async (_req, res) => {
 });
 
 // ═══ CONFIG — Read/Write system_config in Supabase ═══
-app.get("/api/config", async (_req, res) => {
+app.get("/api/config", async (req, res) => {
     try {
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.json({ success: true, config: [] });
         const { data, error } = await supabase
             .from("system_config")
-            .select("*");
+            .select("*")
+            .eq("user_id", userId);
         if (error) {
             // Table may not exist — return empty config (frontend uses defaults)
             return res.json({ success: true, config: [] });
@@ -302,16 +344,16 @@ app.get("/api/config", async (_req, res) => {
 
 app.put("/api/config", async (req, res) => {
     try {
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.status(401).json({ error: "Not authenticated" });
         const { key, value } = req.body;
         const { error } = await supabase
             .from("system_config")
-            .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+            .upsert({ key, value, user_id: userId, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" });
         if (error) throw error;
-        // Hot-reload risk limits into the running RiskManager
-        if (key.startsWith("risk_")) {
+        if (key.startsWith("risk_") && aiLoop) {
             aiLoop.reloadRiskConfig(key, value);
         }
-        // Hot-reload agent profiles
         if (key.startsWith("agent_")) {
             await ProfileParser.reloadConfig();
         }
@@ -338,25 +380,30 @@ app.get("/api/config/risk", (_req, res) => {
 
 app.post("/api/config/risk", async (req, res) => {
     try {
-        const updates = req.body; // { risk_max_daily_dd_pct: 8, market_crypto_leverage: 10, ... }
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.status(401).json({ error: "Not authenticated" });
+        const updates = req.body;
         for (const [key, value] of Object.entries(updates)) {
             updateRule(key, value);
-            // Also hot-reload into RiskManager
-            aiLoop.reloadRiskConfig(key, value);
+            if (aiLoop) aiLoop.reloadRiskConfig(key, value);
         }
         io.emit("config_updated", { risk: AXI_SELECT_RULES, markets: MARKET_RULES });
-        // Persist MARKET_RULES object to agent_memory
-        saveMarketRules(MARKET_RULES).catch(e => console.error('[Supabase] Save error:', e));
-        // Also persist each market_* key individually to system_config for frontend hydration
+        saveMarketRules(MARKET_RULES, userId).catch(e => console.error('[Supabase] Save error:', e));
         const marketKeys = Object.entries(updates).filter(([k]) => k.startsWith("market_"));
         if (marketKeys.length > 0) {
             const upserts = marketKeys.map(([key, value]) => ({
                 key,
                 value: String(value),
+                user_id: userId,
                 updated_at: new Date().toISOString(),
             }));
-            supabase.from("system_config").upsert(upserts, { onConflict: "key" })
+            supabase.from("system_config").upsert(upserts, { onConflict: "key,user_id" })
                 .then(({ error }) => { if (error) console.error('[Supabase] market_* save error:', error); });
+        }
+        if (paperEngine) {
+            for (const [key, value] of Object.entries(updates)) {
+                paperEngine.updateConfig(key, value);
+            }
         }
         res.json({ success: true, rules: AXI_SELECT_RULES, markets: MARKET_RULES });
     } catch (error: any) {
@@ -366,11 +413,14 @@ app.post("/api/config/risk", async (req, res) => {
 // ═══ ECOSYSTEM PROFILES — Named config presets per market ═══
 app.get("/api/config/profiles/:ecosystem", async (req, res) => {
     try {
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.json({ success: true, profiles: [] });
         const eco = req.params.ecosystem;
         const prefix = `eco_profile__${eco}__`;
         const { data, error } = await supabase
             .from("system_config")
             .select("*")
+            .eq("user_id", userId)
             .like("key", `${prefix}%`);
         if (error) return res.json({ success: true, profiles: [] });
         const profiles = (data || []).map(row => ({
@@ -385,12 +435,14 @@ app.get("/api/config/profiles/:ecosystem", async (req, res) => {
 
 app.post("/api/config/profiles", async (req, res) => {
     try {
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.status(401).json({ error: "Not authenticated" });
         const { ecosystem, name, data } = req.body;
         if (!ecosystem || !name) return res.status(400).json({ error: "ecosystem and name required" });
         const key = `eco_profile__${ecosystem}__${name}`;
         const { error } = await supabase
             .from("system_config")
-            .upsert({ key, value: JSON.stringify(data), updated_at: new Date().toISOString() }, { onConflict: "key" });
+            .upsert({ key, value: JSON.stringify(data), user_id: userId, updated_at: new Date().toISOString() }, { onConflict: "key,user_id" });
         if (error) throw error;
         res.json({ success: true });
     } catch (error: any) {
@@ -400,10 +452,12 @@ app.post("/api/config/profiles", async (req, res) => {
 
 app.delete("/api/config/profiles", async (req, res) => {
     try {
+        const userId = await getUserIdFromReq(req);
+        if (!userId) return res.status(401).json({ error: "Not authenticated" });
         const { ecosystem, name } = req.body;
         if (!ecosystem || !name) return res.status(400).json({ error: "ecosystem and name required" });
         const key = `eco_profile__${ecosystem}__${name}`;
-        const { error } = await supabase.from("system_config").delete().eq("key", key);
+        const { error } = await supabase.from("system_config").delete().eq("key", key).eq("user_id", userId);
         if (error) throw error;
         res.json({ success: true });
     } catch (error: any) {
@@ -413,8 +467,8 @@ app.delete("/api/config/profiles", async (req, res) => {
 
 // ═══ PAPER ENGINE CONTROLS — Reset DD + Balance ═══
 app.post("/api/paper/reset-dd", (_req, res) => {
+    if (!paperEngine) return res.status(503).json({ error: "Engine not ready" });
     paperEngine.resetDailyDrawdown();
-    // Also sync DD limits from AXI_SELECT_RULES
     paperEngine.updateConfig("risk_max_daily_dd_pct", AXI_SELECT_RULES.maxDailyDrawdownPct);
     paperEngine.updateConfig("risk_max_total_dd_pct", AXI_SELECT_RULES.maxTotalDrawdownPct);
     io.emit("paper_dd_reset", { dailyDrawdown: paperEngine.getMaxDailyDrawdownPct() });
@@ -423,10 +477,12 @@ app.post("/api/paper/reset-dd", (_req, res) => {
 
 app.post("/api/paper/reset-balance", async (req, res) => {
     const newBalance = parseFloat(req.body?.balance) || 10000;
+    if (!paperEngine) return res.status(503).json({ error: "Engine not ready" });
+    const userId = await getUserIdFromReq(req);
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
     
     try {
-        const { supabase } = await import("./src/utils/supabaseClient");
-        await supabase.from("paper_positions").delete().neq('id', 'NONE');
+        await supabase.from("paper_positions").delete().eq("user_id", userId).neq('id', 'NONE');
         
         for (const m of Object.keys(paperEngine.accounts)) {
             const acc = paperEngine.accounts[m];
@@ -440,6 +496,7 @@ app.post("/api/paper/reset-balance", async (req, res) => {
             
             await supabase.from("paper_account").upsert({
                 id: m,
+                user_id: userId,
                 balance: newBalance,
                 equity: newBalance,
                 daily_drawdown: 0,
@@ -449,18 +506,20 @@ app.post("/api/paper/reset-balance", async (req, res) => {
                 peak_balance: newBalance,
                 daily_start_balance: newBalance,
                 updated_at: new Date().toISOString()
-            });
+            }, { onConflict: "id,user_id" });
         }
         paperEngine.emitAccountUpdate();
         io.emit("paper_balance_reset", { balance: newBalance });
-        res.json({ success: true, balance: newBalance, message: `Balance reiniciado a $${newBalance} y base de datos de posiciones limpiada` });
+        res.json({ success: true, balance: newBalance, message: `Balance reiniciado a $${newBalance}` });
     } catch (e: any) {
-        console.error("Error resting balance in DB", e);
+        console.error("Error resetting balance in DB", e);
         res.status(500).json({ success: false, error: e.message });
     }
 });
 // Portfolio state
-app.get("/api/positions", (_req, res) => {
+app.get("/api/positions", async (_req, res) => {
+    if (!paperEngine) return res.json({ positions: [], equity: 0, balance: 0, dailyDrawdown: 0, maxDrawdown: 0, totalPnl: 0 });
+    await paperEngine.ready;
     res.json({
         positions: paperEngine.getOpenPositionsSnapshot(),
         equity: paperEngine.getTotalEquity(),
@@ -473,6 +532,7 @@ app.get("/api/positions", (_req, res) => {
 
 // AI Loop stats
 app.get("/api/ai-stats", (_req, res) => {
+    if (!aiLoop) return res.json({});
     res.json(aiLoop.getStats());
 });
 
@@ -547,7 +607,7 @@ app.get("/api/health", (_req, res) => {
         uptime: process.uptime(),
         connectedClients: io.engine?.clientsCount || 0,
         latestPrices,
-        aiStats: aiLoop.getStats(),
+        aiStats: aiLoop ? aiLoop.getStats() : {},
         swarmRunning: (SwarmAutonomyLoop as any).isRunning,
     });
 });
@@ -592,9 +652,19 @@ setInterval(() => {
     });
 }, 2000);
 
-io.on("connection", (socket) => {
-    // Bidirectional chat: frontend sends command → CEO processes → response emitted back
-    // TAREA 2: Retry mechanism para race condition
+io.on("connection", async (socket) => {
+    // Initialize engine on first authenticated connection
+    const socketUserId = (socket as any).userId as string;
+    if (socketUserId && !paperEngine) {
+        await initEngineForUser(socketUserId);
+        wireEngineSystems();
+        startSwarm();
+    } else if (socketUserId && activeUserId !== socketUserId) {
+        engineSystemsWired = false;
+        await initEngineForUser(socketUserId);
+        wireEngineSystems();
+    }
+
     socket.on("request_pixel_assets", () => {
         if (pixelAssetsCache) {
             console.log(`📡 [WSS] Enviando Pixel Assets bajo demanda al CLI ${socket.id}`);
@@ -604,6 +674,7 @@ io.on("connection", (socket) => {
 
     socket.on("user_command", async (data: { text: string }) => {
         try {
+            if (!aiLoop) return socket.emit("ceo_response", { text: "Engine not ready", timestamp: Date.now() });
             broadcastAgentLog("ceo", `💬 Comando recibido del Dashboard: "${data.text}"`, "info");
             const response = await aiLoop.ceoAgent.processMessage(data.text);
             socket.emit("ceo_response", { text: response, timestamp: Date.now() });
@@ -647,18 +718,8 @@ server.listen(PORT, "0.0.0.0", async () => {
     console.log(`  🔗 CORS Allowed: ${Array.isArray(corsOrigins) ? corsOrigins.join(", ") : "ALL (dev mode)"}`);
     console.log(`${"═".repeat(60)}\n`);
 
-    // Load MARKET_RULES from Supabase (persisted config)
-    try {
-        const savedRules = await loadMarketRules();
-        if (savedRules) {
-            Object.assign(MARKET_RULES, savedRules);
-            console.log("[Startup] ✅ MARKET_RULES cargadas desde Supabase:", Object.keys(savedRules));
-        } else {
-            console.log("[Startup] ℹ️ No hay MARKET_RULES en Supabase, usando defaults.");
-        }
-    } catch (e) {
-        console.warn("[Startup] ⚠️ No se pudieron cargar MARKET_RULES desde Supabase:", e);
-    }
+    // Market rules are now loaded per-user in initEngineForUser()
+    console.log("[Startup] Engine init deferred until first authenticated connection.");
 
     // Load system_config from Supabase (persisted UI settings like risk_max_daily_dd_pct)
     try {
@@ -685,10 +746,12 @@ server.listen(PORT, "0.0.0.0", async () => {
         console.warn("[Startup] ⚠️ Error inicializando ProfileParser:", e);
     }
 
-    // Sync PaperEngine DD limits from AXI_SELECT_RULES (may have been updated from Supabase)
-    paperEngine.updateConfig("risk_max_daily_dd_pct", AXI_SELECT_RULES.maxDailyDrawdownPct);
-    paperEngine.updateConfig("risk_max_total_dd_pct", AXI_SELECT_RULES.maxTotalDrawdownPct);
-    console.log(`[Startup] PaperEngine DD limits synced: daily=${AXI_SELECT_RULES.maxDailyDrawdownPct}%, total=${AXI_SELECT_RULES.maxTotalDrawdownPct}%`);
+    // Sync PaperEngine DD limits after market rules load (deferred - engine may not exist yet)
+    if (paperEngine) {
+        paperEngine.updateConfig("risk_max_daily_dd_pct", AXI_SELECT_RULES.maxDailyDrawdownPct);
+        paperEngine.updateConfig("risk_max_total_dd_pct", AXI_SELECT_RULES.maxTotalDrawdownPct);
+    }
+    console.log(`[Startup] DD limits: daily=${AXI_SELECT_RULES.maxDailyDrawdownPct}%, total=${AXI_SELECT_RULES.maxTotalDrawdownPct}%`);
 
     // HYPERLIQUID: Cripto principal
     const hlSymbols = (process.env.HL_SYMBOLS || "BTC,ETH").split(",");
@@ -706,19 +769,16 @@ server.listen(PORT, "0.0.0.0", async () => {
     await loadPixelAssets(path.join(__dirname, "../frontend/pixel-agents/webview-ui/public"))
         .then(assets => {
             pixelAssetsCache = assets;
-            io.emit("pixel_assets_loaded", assets); // <-- EMIT TO EXISTING CLIENTS!
+            io.emit("pixel_assets_loaded", assets);
             console.log(`  🎨 Pixel Assets Loaded: ${assets.wallTiles?.length||0} walls, ${assets.floorTiles?.length||0} floors, ${assets.characters?.length||0} characters`);
         })
         .catch(err => console.error("  ❌ Pixel Assets Error:", err.message));
 
-    // INICIAR LOS AGENTES Y EL ESCÁNER PROACTIVO
-    startSwarm();
+    // Engine init is now deferred until first auth connection (via socket)
+    // startSwarm() is called inside socket connection handler
 
-    // CARGAR PERFILES MARKDOWN OPENCLAW Y ARRANCAR ENJAMBRE
     ProfileParser.bootstrap().then(() => {
         console.log(`  🧠 OpenClaw Profiles Loaded`);
-        // 🤖 START AUTONOMOUS SWARM ORCHESTRATOR
-        // startSwarm(); // Moved above
     }).catch(err => console.error("  ❌ ProfileParser Error:", err.message));
 
     console.log(`  📡 Hyperliquid (Cripto):  ${hlSymbols.join(", ")}`);
@@ -735,7 +795,7 @@ server.listen(PORT, "0.0.0.0", async () => {
 
 process.on("SIGTERM", () => {
     stopSwarm();
-    cronOrchestrator.destroy();
+    if (cronOrchestrator) cronOrchestrator.destroy();
     wsManager.disconnectAll();
     server.close();
 });

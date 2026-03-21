@@ -272,7 +272,7 @@ export class RiskManagerAgent {
                     llmDecision: "AUTO_APPROVE_AGGRESSIVE",
                     tradeResult: resultObj.success ? "EXECUTED" : "FAILED",
                     timestamp: new Date().toISOString(),
-                })).catch(() => { });
+                }), this.paperEngine.userId).catch(() => { });
 
                 if (resultObj.success) {
                     broadcastAgentState("risk_manager", "approved", `${signal.action} ${signal.symbol}`, "success");
@@ -363,7 +363,7 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
                     tradeResult: resultObj.success ? "EXECUTED" : "FAILED",
                     tokens: { prompt: usage.promptTokens, completion: usage.completionTokens },
                     timestamp: new Date().toISOString(),
-                }));
+                }), this.paperEngine.userId);
 
                 if (resultObj.success) {
                     broadcastAgentState("risk_manager", "approved", `${signal.action} ${signal.symbol}`, "success");
@@ -381,7 +381,7 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
                     llmDecision: "REJECT_WITH_FEEDBACK",
                     reason: decision.reason,
                     timestamp: new Date().toISOString(),
-                })).catch(() => { });
+                }), this.paperEngine.userId).catch(() => { });
 
                 broadcastAgentState("risk_manager", "feedback", decision.reason.slice(0, 30), "active");
                 broadcastAgentLog("ceo", `🗣️ Risk Guardian exige ajuste: ${decision.reason}`, "warn");
@@ -397,7 +397,7 @@ Evalúa el contexto macroeconómico y los parámetros de riesgo. Responde en JSO
                     reason: decision.reason,
                     tokens: { prompt: usage.promptTokens, completion: usage.completionTokens },
                     timestamp: new Date().toISOString(),
-                })).catch(() => { });
+                }), this.paperEngine.userId).catch(() => { });
 
                 broadcastAgentState("risk_manager", "rejected", decision.reason.slice(0, 30), "error");
                 broadcastAgentLog("ceo", `⛔ Risk Guardian rechazó (contexto macro): ${decision.reason}`, "error");

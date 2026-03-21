@@ -129,7 +129,7 @@ CONTEXTO ACTUAL:
      * Genera un resumen diario del portfolio (se ejecuta a medianoche UTC).
      */
     public async generateDailyReport(): Promise<string> {
-        const riskMemory = await getAgentMemory("risk_manager", "last_decision");
+        const riskMemory = await getAgentMemory("risk_manager", "last_decision", this.paperEngine.userId);
 
         const report = [
             `📊 *REPORTE DIARIO — ${new Date().toISOString().split("T")[0]}*`,
@@ -146,7 +146,7 @@ CONTEXTO ACTUAL:
             riskMemory ? riskMemory.content.slice(0, 200) : "Sin decisiones registradas.",
         ].join("\n");
 
-        await saveAgentMemory("ceo", "daily_report", report);
+        await saveAgentMemory("ceo", "daily_report", report, this.paperEngine.userId);
         return report;
     }
 }

@@ -18,16 +18,16 @@ export class CEOAgency {
             let actionObj = CEOAgency.parseCommandMock(command);
 
             if (actionObj.intent === "PAUSE_ALPACA") {
-                await updateSystemConfig({ alpaca_status: "PAUSED" });
+                await updateSystemConfig("alpaca_status", "PAUSED", userId);
                 broadcastAgentState("ceo", "system_updated", "Alpaca Paused", "success");
             }
             else if (actionObj.intent === "SWITCH_PAPER_MODE") {
-                await updateSystemConfig({ mode: "PAPER" });
+                await updateSystemConfig("mode", "PAPER", userId);
                 broadcastAgentState("ceo", "system_updated", "Paper Mode", "success");
             }
             else if (actionObj.intent === "CLOSE_CRYPTO") {
                 broadcastAgentState("risk", "liquidating", "MEXC Crypto", "active");
-                await updateSystemConfig({ mexc_status: "LIQUIDATING" });
+                await updateSystemConfig("mexc_status", "LIQUIDATING", userId);
 
                 // The actual liquidation is handled by the PaperEngine via a separate event
                 broadcastAgentState("risk", "liquidated", "MEXC Crypto", "success");

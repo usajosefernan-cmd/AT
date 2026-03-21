@@ -65,13 +65,16 @@ export class PaperExecutionEngine extends EventEmitter {
     public limits: Record<string, { dailyDD: number, totalDD: number }> = {};
     public l4a: L4AExecutionEngine;
     public l4b: L4BPortfolioStrategist;
+    public ready: Promise<void>;
+    public userId: string;
 
     private lastDailyAlertTime = 0;
     private lastTotalAlertTime = 0;
     private drawdownAlertCooldownMs = 60_000;
 
-    constructor() {
+    constructor(userId: string) {
         super();
+        this.userId = userId;
         for (const m of MARKET_IDS) {
             this.accounts[m] = {
                 balance: 10000,
@@ -94,14 +97,14 @@ export class PaperExecutionEngine extends EventEmitter {
         // L4-B: Portfolio Strategist — auditoría macro asíncrona con override jerárquico
         this.l4b = new L4BPortfolioStrategist(this);
 
-        console.log(`[PaperEngine] Initializing Multi-Market Virtual Accounts + L4-A/L4-B Engine + Telemetry.`);
-        this.loadAllStatesFromSupabase().catch(err => console.error("[PaperEngine] Init Error:", err));
+        console.log(`[PaperEngine] Initializing for user ${userId.slice(0, 8)}... Multi-Market + L4-A/L4-B + Telemetry.`);
+        this.ready = this.loadAllStatesFromSupabase().catch(err => console.error("[PaperEngine] Init Error:", err));
     }
 
     private async loadAllStatesFromSupabase() {
         try {
-            const accounts = await getAllPaperAccounts();
-            const openPositions = await getOpenPaperPositions();
+            const accounts = await getAllPaperAccounts(this.userId);
+            const openPositions = await getOpenPaperPositions(this.userId);
 
             for (const accData of accounts) {
                 const m = accData.id;
@@ -166,11 +169,11 @@ export class PaperExecutionEngine extends EventEmitter {
                 await updatePaperBalance(
                     m, acc.balance, this.getEquity(m), 
                     this.getDailyDrawdownPct(m), this.getMaxDrawdownPct(m), 
-                    acc.totalPnl, acc.initialBalance, acc.peakBalance, acc.dailyStartBalance
+                    acc.totalPnl, acc.initialBalance, acc.peakBalance, acc.dailyStartBalance, this.userId
                 );
 
                 for (const pos of acc.positions.values()) {
-                    await savePaperPosition(pos, m);
+                    await savePaperPosition(pos, m, this.userId);
                 }
             } catch (err) {
                 console.error(`[PaperEngine] Failed to save SQL state to Supabase for ${m}:`, err);

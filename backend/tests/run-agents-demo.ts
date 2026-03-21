@@ -9,7 +9,7 @@
  */
 
 import "dotenv/config";
-import { askGroq, askOpenRouter, getLLMSessionStats } from "../src/ai/LLMService";
+import { askGroq, getLLMSessionStats } from "../src/ai/LLMService";
 import { SentinelAgent, TradeSignal } from "../src/agents/SentinelAgent";
 import { PaperExecutionEngine } from "../src/engine/PaperExecutionEngine";
 import { OHLCCandle } from "../src/utils/WebSocketManager";
@@ -109,7 +109,7 @@ async function main() {
     // ─── Step 3: Risk Manager evaluates (if signal exists) ───
     if (signal && signal.action !== "NO_TRADE") {
         console.log("\n━━━ STEP 3: Risk Manager evaluates the signal ━━━");
-        const engine = new PaperExecutionEngine(10000);
+        const engine = new PaperExecutionEngine("test_user");
 
         // We need to manually patch the weekend check since it IS the weekend
         // (The real system would wait for Monday)
@@ -129,7 +129,7 @@ async function main() {
     } else {
         // Simulate what risk manager would do with a synthetic signal
         console.log("\n━━━ STEP 3: Risk Manager demo with synthetic signal ━━━");
-        const engine = new PaperExecutionEngine(10000);
+        const engine = new PaperExecutionEngine("test_user");
         const { RiskManagerAgent } = await import("../src/agents/RiskManagerAgent");
         const riskManager = new RiskManagerAgent(engine, { BTC: 84500 });
 
@@ -159,11 +159,11 @@ async function main() {
         }
     }
 
-    // ─── Step 4: Deep analysis with OpenRouter (Claude) ───
-    console.log("\n━━━ STEP 4: OpenRouter (Claude) deep macro analysis ━━━");
+    // ─── Step 4: Deep analysis with Groq (replaces old OpenRouter call) ───
+    console.log("\n━━━ STEP 4: Groq deep macro analysis ━━━");
     try {
-        const { message, usage } = await askOpenRouter(
-            "You are a senior macro analyst. Evaluate the macro risk for a BTC long position opened right now.",
+        const { data: macroAnalysis } = await askGroq<{ analysis: string }>(
+            "You are a senior macro analyst. Respond in JSON with field 'analysis' (2-3 sentences on macro risk for BTC long).",
             `Current context:
 - BTC price: $84,500
 - 3-day volume trend: increasing
@@ -172,19 +172,14 @@ async function main() {
 - Next FOMC: 2 weeks away
 - Crypto Fear & Greed: 68 (Greed)
 
-Provide your analysis in 2-3 sentences focused on risk.`,
-            {
-                model: "anthropic/claude-3.5-sonnet",
-                temperature: 0.2,
-                maxTokens: 300,
-            }
+Provide your analysis focused on risk.`,
+            { temperature: 0.2, maxTokens: 300 }
         );
 
-        console.log("\n📈 Claude Macro Analysis:");
-        console.log(message.content);
-        console.log(`\nTokens: ${usage.promptTokens} in / ${usage.completionTokens} out | ${usage.durationMs}ms`);
+        console.log("\n📈 Macro Analysis:");
+        console.log(macroAnalysis?.analysis || JSON.stringify(macroAnalysis));
     } catch (e: any) {
-        console.error("OpenRouter call failed:", e.message);
+        console.error("Macro analysis call failed:", e.message);
     }
 
     // ─── Final Stats ───
